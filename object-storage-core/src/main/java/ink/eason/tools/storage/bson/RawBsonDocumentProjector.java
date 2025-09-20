@@ -1,5 +1,6 @@
 package ink.eason.tools.storage.bson;
 
+import ink.eason.tools.storage.bson.MyBsonBinaryWriter.Mark;
 import org.bson.BsonBinaryReader;
 import org.bson.BsonBinaryWriter;
 import org.bson.BsonInvalidOperationException;
@@ -30,7 +31,7 @@ public class RawBsonDocumentProjector {
         ByteBuffer bsonOutputByteBuffer = ByteBuffer.allocate(bsonInputByteBuffer.remaining());
 
         try (BsonBinaryReader reader = new BsonBinaryReader(bsonInputByteBuffer);
-             BsonBinaryWriter writer = new BsonBinaryWriter(new BsonOutputByteBuffer(bsonOutputByteBuffer))) {
+             MyBsonBinaryWriter writer = new MyBsonBinaryWriter(new BsonOutputByteBuffer(bsonOutputByteBuffer))) {
             pipeDocument(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projection, ROOT_PATH);
         }
 
@@ -41,7 +42,7 @@ public class RawBsonDocumentProjector {
 
     private boolean pipeDocument(
             ByteBuffer bsonInputByteBuffer, ByteBuffer bsonOutputByteBuffer,
-            BsonBinaryReader reader, BsonBinaryWriter writer,
+            BsonBinaryReader reader, MyBsonBinaryWriter writer,
                               Set<String> projKeys, String currentPath) {
         reader.readStartDocument();
         writer.writeStartDocument();
@@ -59,19 +60,25 @@ public class RawBsonDocumentProjector {
                     writer.writeName(fieldName);
                     writer.pipe(reader);
                     hasValueWritten = true;
-                } else {
-                    writer.writeName(fieldName);
-                    if (pipeValue(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, fullPath)) {
-                        hasValueWritten = true;
-                    }
                 }
-            } else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
-                writer.mark();
+                else if(bsonType == BsonType.ARRAY) {
+                    writer.writeName(fieldName);
+                    pipeArray(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, fullPath);
+                    hasValueWritten = true;
+                }
+                else {
+                    writer.writeName(fieldName);
+                    pipeValue(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, fullPath);
+                    hasValueWritten = true;
+                }
+            }
+            else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                Mark mark = writer.getMark();
                 writer.writeName(fieldName);
                 if (pipeValue(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, fullPath)) {
                     hasValueWritten = true;
                 } else {
-                    writer.reset();
+                    writer.resetMark(mark);
                 }
 
                 //int pos = bsonInputByteBuffer.position();
@@ -99,7 +106,17 @@ public class RawBsonDocumentProjector {
                 //    tempReader.close();
                 //}
 
-            } else {
+            }
+            else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                Mark mark = writer.getMark();
+                writer.writeName(fieldName);
+                if (pipeValue(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, fullPath)) {
+                    hasValueWritten = true;
+                } else {
+                    writer.resetMark(mark);
+                }
+            }
+            else {
                 reader.skipValue();
             }
 
@@ -112,15 +129,20 @@ public class RawBsonDocumentProjector {
     }
 
     private boolean pipeArray(ByteBuffer bsonInputByteBuffer, ByteBuffer bsonOutputByteBuffer,
-                           BsonBinaryReader reader, BsonBinaryWriter writer,
+                           BsonBinaryReader reader, MyBsonBinaryWriter writer,
                            Set<String> projKeys, String currentPath) {
         boolean hasValueWritten = false;
         reader.readStartArray();
         writer.writeStartArray();
+        int idx = 0;
         while (reader.readBsonType() != BsonType.END_OF_DOCUMENT) {
-            if (pipeValue(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, currentPath)) {
+            Mark mark = writer.getMark();
+            if (pipeValue(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, currentPath + "." + idx)) {
                 hasValueWritten = true;
+            } else {
+                writer.resetMark(mark);
             }
+            idx++;
         }
         reader.readEndArray();
         writer.writeEndArray();
@@ -128,7 +150,7 @@ public class RawBsonDocumentProjector {
     }
 
     private boolean pipeValue(ByteBuffer bsonInputByteBuffer, ByteBuffer bsonOutputByteBuffer,
-                           BsonBinaryReader reader, BsonBinaryWriter writer,
+                           BsonBinaryReader reader, MyBsonBinaryWriter writer,
                            Set<String> projKeys, String currentPath) {
 
         BsonType bsonType = reader.getCurrentBsonType();
@@ -215,12 +237,24 @@ public class RawBsonDocumentProjector {
                     "city": "New York",
                     "zip": 10001
                   },
-                  "hobbies": ["reading", "traveling"]
+                  "hobbies": ["reading", "traveling"],
+                  "workExperience": [
+                    {
+                      "company": "ABC Corp",
+                      "position": "Developer",
+                      "years": 5
+                    },
+                    {
+                      "company": "XYZ Corp",
+                      "position": "Manager",
+                      "years": 3
+                    }
+                  ]
                 }
                 """);
 
         RawBsonDocumentProjector projector = new RawBsonDocumentProjector();
-        RawBsonDocument output = projector.project(rawDoc, Set.of("user.notExists", "address.city", "hobbies"));
+        RawBsonDocument output = projector.project(rawDoc, Set.of("user.notExists", "address.city", "hobbies", "workExperience.0.notExists"));
         System.out.println(output.toJson());
 
     }
