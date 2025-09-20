@@ -219,44 +219,10 @@ public class RawBsonDocumentProjector {
         return true;
     }
 
-    public static void main(String[] args) {
-        RawBsonDocument rawDoc = RawBsonDocument.parse("""
-                {
-                  "user": {
-                    "name": "Alice",
-                    "age": 30
-                  },
-                  "address": {
-                    "city": "New York",
-                    "zip": 10001
-                  },
-                  "hobbies": ["reading", "traveling"],
-                  "workExperience": [
-                    {
-                      "company": "ABC Corp",
-                      "position": "Developer",
-                      "years": 5,
-                      "skills": ["Java", "Python"]
-                    },
-                    {
-                      "company": "XYZ Corp",
-                      "position": "Manager",
-                      "years": 3
-                    }
-                  ]
-                }
-                """);
-
-        RawBsonDocumentProjector projector = new RawBsonDocumentProjector();
-        RawBsonDocument output = projector.project(rawDoc, Set.of("user.notExists", "address.city", "hobbies", "workExperience[0].company", "workExperience[1].company","workExperience[0].skills"));
-        System.out.println(output.toJson());
-
-    }
-
     /**
      * A BSON output stream that stores the output in a single, un-pooled byte array.
      */
-    private static class InternalOutputByteBuffer extends OutputBuffer {
+    static class InternalOutputByteBuffer extends OutputBuffer {
 
         /**
          * This ByteBuffer allows us to write ObjectIDs without allocating a temporary array per object, and enables us
@@ -469,6 +435,47 @@ public class RawBsonDocumentProjector {
                 bsonOutput.truncateToPosition(position);
             }
         }
+
+    }
+
+
+    public static void main(String[] args) {
+        RawBsonDocument rawDoc = RawBsonDocument.parse("""
+                {
+                  "user": {
+                    "name": "Alice",
+                    "age": 30
+                  },
+                  "address": {
+                    "city": "New York",
+                    "zip": 10001
+                  },
+                  "hobbies": ["reading", "traveling"],
+                  "workExperience": [
+                    {
+                      "company": "ABC Corp",
+                      "position": "Developer",
+                      "years": 5,
+                      "skills": ["Java", "Python"]
+                    },
+                    {
+                      "company": "XYZ Corp",
+                      "position": "Manager",
+                      "years": 3
+                    }
+                  ]
+                }
+                """);
+
+        RawBsonDocumentProjector projector = new RawBsonDocumentProjector();
+        long s = System.currentTimeMillis();
+
+        for (int i = 0; i < 1_000_000; i++) {
+            RawBsonDocument output = projector.project(rawDoc, Set.of("user.notExists", "address.city", "hobbies", "workExperience[0].company", "workExperience[1].company","workExperience[0].skills"));
+        }
+        System.out.println("cost time: " + (System.currentTimeMillis() - s));
+        RawBsonDocument output = projector.project(rawDoc, Set.of("user.notExists", "address.city", "hobbies", "workExperience[0].company", "workExperience[1].company","workExperience[0].skills"));
+        System.out.println(output.toJson());
 
     }
 }
