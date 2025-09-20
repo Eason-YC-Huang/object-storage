@@ -1,14 +1,33 @@
 package ink.eason.tools.storage.bson;
 
-import ink.eason.tools.storage.bson.InternalBsonBinaryWriter.Mark;
+import ink.eason.tools.storage.bson.RawBsonDocumentProjector.InternalBsonBinaryWriter.Mark;
+import org.bson.AbstractBsonWriter;
 import org.bson.BsonBinaryReader;
+import org.bson.BsonBinaryWriter;
+import org.bson.BsonBinaryWriterSettings;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonType;
+import org.bson.BsonWriterSettings;
+import org.bson.ByteBuf;
+import org.bson.ByteBufNIO;
+import org.bson.FieldNameValidator;
 import org.bson.RawBsonDocument;
+import org.bson.io.BsonOutput;
+import org.bson.io.OutputBuffer;
+import org.bson.types.ObjectId;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+
+import static java.lang.String.format;
+import static java.nio.ByteOrder.LITTLE_ENDIAN;
 
 public class RawBsonDocumentProjector {
 
@@ -28,7 +47,7 @@ public class RawBsonDocumentProjector {
         ByteBuffer bsonOutputByteBuffer = ByteBuffer.allocate(bsonInputByteBuffer.remaining());
 
         try (BsonBinaryReader reader = new BsonBinaryReader(bsonInputByteBuffer);
-             InternalBsonBinaryWriter writer = new InternalBsonBinaryWriter(new BsonOutputByteBuffer(bsonOutputByteBuffer))) {
+             InternalBsonBinaryWriter writer = new InternalBsonBinaryWriter(new InternalOutputByteBuffer(bsonOutputByteBuffer))) {
             pipeDocument(reader, writer, projection, ROOT_PATH);
         }
 
@@ -223,6 +242,225 @@ public class RawBsonDocumentProjector {
         RawBsonDocumentProjector projector = new RawBsonDocumentProjector();
         RawBsonDocument output = projector.project(rawDoc, Set.of("user.notExists", "address.city", "hobbies", "workExperience.0.notExists"));
         System.out.println(output.toJson());
+
+    }
+
+    /**
+     * A BSON output stream that stores the output in a single, un-pooled byte array.
+     */
+    private static class InternalOutputByteBuffer extends OutputBuffer {
+
+        /**
+         * This ByteBuffer allows us to write ObjectIDs without allocating a temporary array per object, and enables us
+         * to leverage JVM intrinsics for writing little-endian numeric values.
+         */
+        private ByteBuffer buffer;
+
+        /**
+         * Construct an instance with the specified initial byte array size.
+         *
+         * @param size the initial size of the byte array
+         */
+        public InternalOutputByteBuffer(final int size) {
+            // Allocate heap buffer to ensure we can access underlying array
+            this.buffer = ByteBuffer.allocate(size).order(LITTLE_ENDIAN);
+        }
+
+        public InternalOutputByteBuffer(final ByteBuffer buffer) {
+            this.buffer = buffer.order(LITTLE_ENDIAN);
+        }
+
+        public ByteBuffer getInternalBuffer() {
+            return buffer;
+        }
+
+        @Override
+        public void write(final byte[] b) {
+            writeBytes(b, 0, b.length);
+        }
+
+        @Override
+        public byte[] toByteArray() {
+            ensureOpen();
+            return Arrays.copyOf(buffer.array(), buffer.position());
+        }
+
+        @Override
+        public void writeInt32(final int value) {
+            ensureOpen();
+            ensure(4);
+            buffer.putInt(value);
+        }
+
+        @Override
+        public void writeInt32(final int position, final int value) {
+            ensureOpen();
+            checkPosition(position, 4);
+            buffer.putInt(position, value);
+        }
+
+        @Override
+        public void writeInt64(final long value) {
+            ensureOpen();
+            ensure(8);
+            buffer.putLong(value);
+        }
+
+        @Override
+        public void writeObjectId(final ObjectId value) {
+            ensureOpen();
+            ensure(12);
+            value.putToByteBuffer(buffer);
+        }
+
+        @Override
+        public void writeBytes(final byte[] bytes, final int offset, final int length) {
+            ensureOpen();
+
+            ensure(length);
+            buffer.put(bytes, offset, length);
+        }
+
+        @Override
+        public void writeByte(final int value) {
+            ensureOpen();
+
+            ensure(1);
+            buffer.put((byte) (0xFF & value));
+        }
+
+        @Override
+        protected void write(final int absolutePosition, final int value) {
+            ensureOpen();
+            checkPosition(absolutePosition, 1);
+
+            buffer.put(absolutePosition, (byte) (0xFF & value));
+        }
+
+        @Override
+        public int getPosition() {
+            ensureOpen();
+            return buffer.position();
+        }
+
+        /**
+         * @return size of data so far
+         */
+        @Override
+        public int getSize() {
+            ensureOpen();
+            return buffer.position();
+        }
+
+        @Override
+        public int pipe(final OutputStream out) throws IOException {
+            ensureOpen();
+            out.write(buffer.array(), 0, buffer.position());
+            return buffer.position();
+        }
+
+        @Override
+        public void truncateToPosition(final int newPosition) {
+            ensureOpen();
+            if (newPosition > buffer.position() || newPosition < 0) {
+                throw new IllegalArgumentException();
+            }
+            // The cast is required for compatibility with JDK 9+ where ByteBuffer's position method is inherited from Buffer.
+            ((Buffer) buffer).position(newPosition);
+        }
+
+        @Override
+        public List<ByteBuf> getByteBuffers() {
+            ensureOpen();
+            // Create a flipped copy of the buffer for reading. Note that ByteBufNIO overwrites the endian-ness.
+            ByteBuffer flipped = ByteBuffer.wrap(buffer.array(), 0, buffer.position());
+            return Collections.singletonList(new ByteBufNIO(flipped));
+        }
+
+        @Override
+        public void close() {
+            buffer = null;
+        }
+
+        private void ensureOpen() {
+            if (buffer == null) {
+                throw new IllegalStateException("The output is closed");
+            }
+        }
+
+        private void ensure(final int more) {
+            int length = buffer.position();
+            int need = length + more;
+            if (need <= buffer.capacity()) {
+                return;
+            }
+
+            throw new IllegalStateException("buffer overflow");
+        }
+
+        /**
+         * Ensures that `absolutePosition` is a valid index in `this.buffer` and there is room to write at
+         * least `bytesToWrite` bytes.
+         */
+        private void checkPosition(final int absolutePosition, final int bytesToWrite) {
+            if (absolutePosition < 0) {
+                throw new IllegalArgumentException(format("position must be >= 0 but was %d", absolutePosition));
+            }
+            if (absolutePosition > buffer.position() - bytesToWrite) {
+                throw new IllegalArgumentException(format("position must be <= %d but was %d", buffer.position() - bytesToWrite, absolutePosition));
+            }
+        }
+    }
+
+    private static class InternalBsonBinaryWriter extends BsonBinaryWriter {
+
+        private BsonOutput bsonOutput;
+
+        public InternalBsonBinaryWriter(BsonOutput bsonOutput, FieldNameValidator validator) {
+            super(bsonOutput, validator);
+            this.bsonOutput = bsonOutput;
+        }
+
+        public InternalBsonBinaryWriter(BsonOutput bsonOutput) {
+            super(bsonOutput);
+            this.bsonOutput = bsonOutput;
+        }
+
+        public InternalBsonBinaryWriter(BsonWriterSettings settings, BsonBinaryWriterSettings binaryWriterSettings, BsonOutput bsonOutput) {
+            super(settings, binaryWriterSettings, bsonOutput);
+            this.bsonOutput = bsonOutput;
+        }
+
+        public InternalBsonBinaryWriter(BsonWriterSettings settings, BsonBinaryWriterSettings binaryWriterSettings, BsonOutput bsonOutput, FieldNameValidator validator) {
+            super(settings, binaryWriterSettings, bsonOutput, validator);
+            this.bsonOutput = bsonOutput;
+        }
+
+        public Mark getMark() {
+            return new Mark();
+        }
+
+        public void resetMark(Mark mark) {
+            mark.reset();
+        }
+
+
+        public class Mark extends AbstractBsonWriter.Mark {
+            private final int position;
+
+            /**
+             * Creates a new instance storing the current position of the {@link BsonOutput}.
+             */
+            protected Mark() {
+                this.position = bsonOutput.getPosition();
+            }
+
+            @Override
+            protected void reset() {
+                super.reset();
+                bsonOutput.truncateToPosition(position);
+            }
+        }
 
     }
 }
