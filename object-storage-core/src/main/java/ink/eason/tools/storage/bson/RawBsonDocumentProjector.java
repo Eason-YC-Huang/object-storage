@@ -1,15 +1,12 @@
 package ink.eason.tools.storage.bson;
 
-import ink.eason.tools.storage.bson.MyBsonBinaryWriter.Mark;
+import ink.eason.tools.storage.bson.InternalBsonBinaryWriter.Mark;
 import org.bson.BsonBinaryReader;
-import org.bson.BsonBinaryWriter;
 import org.bson.BsonInvalidOperationException;
 import org.bson.BsonType;
 import org.bson.RawBsonDocument;
-import org.bson.io.BasicOutputBuffer;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Objects;
 import java.util.Set;
 
@@ -31,7 +28,7 @@ public class RawBsonDocumentProjector {
         ByteBuffer bsonOutputByteBuffer = ByteBuffer.allocate(bsonInputByteBuffer.remaining());
 
         try (BsonBinaryReader reader = new BsonBinaryReader(bsonInputByteBuffer);
-             MyBsonBinaryWriter writer = new MyBsonBinaryWriter(new BsonOutputByteBuffer(bsonOutputByteBuffer))) {
+             InternalBsonBinaryWriter writer = new InternalBsonBinaryWriter(new BsonOutputByteBuffer(bsonOutputByteBuffer))) {
             pipeDocument(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projection, ROOT_PATH);
         }
 
@@ -42,7 +39,7 @@ public class RawBsonDocumentProjector {
 
     private boolean pipeDocument(
             ByteBuffer bsonInputByteBuffer, ByteBuffer bsonOutputByteBuffer,
-            BsonBinaryReader reader, MyBsonBinaryWriter writer,
+            BsonBinaryReader reader, InternalBsonBinaryWriter writer,
                               Set<String> projKeys, String currentPath) {
         reader.readStartDocument();
         writer.writeStartDocument();
@@ -129,7 +126,7 @@ public class RawBsonDocumentProjector {
     }
 
     private boolean pipeArray(ByteBuffer bsonInputByteBuffer, ByteBuffer bsonOutputByteBuffer,
-                           BsonBinaryReader reader, MyBsonBinaryWriter writer,
+                           BsonBinaryReader reader, InternalBsonBinaryWriter writer,
                            Set<String> projKeys, String currentPath) {
         boolean hasValueWritten = false;
         reader.readStartArray();
@@ -150,7 +147,7 @@ public class RawBsonDocumentProjector {
     }
 
     private boolean pipeValue(ByteBuffer bsonInputByteBuffer, ByteBuffer bsonOutputByteBuffer,
-                           BsonBinaryReader reader, MyBsonBinaryWriter writer,
+                           BsonBinaryReader reader, InternalBsonBinaryWriter writer,
                            Set<String> projKeys, String currentPath) {
 
         BsonType bsonType = reader.getCurrentBsonType();

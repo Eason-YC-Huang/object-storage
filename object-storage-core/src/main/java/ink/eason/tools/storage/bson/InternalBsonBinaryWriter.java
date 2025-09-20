@@ -7,26 +7,26 @@ import org.bson.BsonWriterSettings;
 import org.bson.FieldNameValidator;
 import org.bson.io.BsonOutput;
 
-public class MyBsonBinaryWriter extends BsonBinaryWriter {
+public class InternalBsonBinaryWriter extends BsonBinaryWriter {
 
     private BsonOutput bsonOutput;
 
-    public MyBsonBinaryWriter(BsonOutput bsonOutput, FieldNameValidator validator) {
+    public InternalBsonBinaryWriter(BsonOutput bsonOutput, FieldNameValidator validator) {
         super(bsonOutput, validator);
         this.bsonOutput = bsonOutput;
     }
 
-    public MyBsonBinaryWriter(BsonOutput bsonOutput) {
+    public InternalBsonBinaryWriter(BsonOutput bsonOutput) {
         super(bsonOutput);
         this.bsonOutput = bsonOutput;
     }
 
-    public MyBsonBinaryWriter(BsonWriterSettings settings, BsonBinaryWriterSettings binaryWriterSettings, BsonOutput bsonOutput) {
+    public InternalBsonBinaryWriter(BsonWriterSettings settings, BsonBinaryWriterSettings binaryWriterSettings, BsonOutput bsonOutput) {
         super(settings, binaryWriterSettings, bsonOutput);
         this.bsonOutput = bsonOutput;
     }
 
-    public MyBsonBinaryWriter(BsonWriterSettings settings, BsonBinaryWriterSettings binaryWriterSettings, BsonOutput bsonOutput, FieldNameValidator validator) {
+    public InternalBsonBinaryWriter(BsonWriterSettings settings, BsonBinaryWriterSettings binaryWriterSettings, BsonOutput bsonOutput, FieldNameValidator validator) {
         super(settings, binaryWriterSettings, bsonOutput, validator);
         this.bsonOutput = bsonOutput;
     }
