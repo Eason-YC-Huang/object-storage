@@ -29,7 +29,7 @@ public class RawBsonDocumentProjector {
 
         try (BsonBinaryReader reader = new BsonBinaryReader(bsonInputByteBuffer);
              InternalBsonBinaryWriter writer = new InternalBsonBinaryWriter(new BsonOutputByteBuffer(bsonOutputByteBuffer))) {
-            pipeDocument(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projection, ROOT_PATH);
+            pipeDocument(reader, writer, projection, ROOT_PATH);
         }
 
         bsonOutputByteBuffer.limit(bsonOutputByteBuffer.position());
@@ -37,9 +37,7 @@ public class RawBsonDocumentProjector {
         return bsonOutputByteBuffer;
     }
 
-    private boolean pipeDocument(
-            ByteBuffer bsonInputByteBuffer, ByteBuffer bsonOutputByteBuffer,
-            BsonBinaryReader reader, InternalBsonBinaryWriter writer,
+    private boolean pipeDocument(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
                               Set<String> projKeys, String currentPath) {
         reader.readStartDocument();
         writer.writeStartDocument();
@@ -60,54 +58,28 @@ public class RawBsonDocumentProjector {
                 }
                 else if(bsonType == BsonType.ARRAY) {
                     writer.writeName(fieldName);
-                    pipeArray(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, fullPath);
+                    pipeArray(reader, writer, projKeys, fullPath);
                     hasValueWritten = true;
                 }
                 else {
                     writer.writeName(fieldName);
-                    pipeValue(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, fullPath);
+                    pipeValue(reader, writer, projKeys, fullPath);
                     hasValueWritten = true;
                 }
             }
             else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
                 Mark mark = writer.getMark();
                 writer.writeName(fieldName);
-                if (pipeValue(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, fullPath)) {
+                if (pipeValue(reader, writer, projKeys, fullPath)) {
                     hasValueWritten = true;
                 } else {
                     writer.resetMark(mark);
                 }
-
-                //int pos = bsonInputByteBuffer.position();
-                //int docLen = bsonInputByteBuffer.getInt();
-                //bsonInputByteBuffer.position(pos);
-                //
-                //// None Exact Matched Document
-                //BsonOutputByteBuffer tempBuffer = new BsonOutputByteBuffer(docLen);
-                //BsonBinaryWriter tempWriter = new BsonBinaryWriter(tempBuffer);
-                //
-                //tempWriter.writeStartDocument();
-                //tempWriter.writeName("v");
-                //pipeValue(bsonInputByteBuffer,bsonOutputByteBuffer, reader, tempWriter, projKeys, fullPath);
-                //tempWriter.writeEndDocument();
-                //
-                //if (tempBuffer.getPosition() > 13) {
-                //    writer.writeName(fieldName);
-                //    ByteBuffer internalBuffer = tempBuffer.getInternalBuffer();
-                //    internalBuffer.limit(internalBuffer.position());
-                //    internalBuffer.position(0);
-                //    BsonBinaryReader tempReader = new BsonBinaryReader(internalBuffer);
-                //    tempReader.readStartDocument();
-                //    tempReader.readName("v");
-                //    writer.pipe(tempReader);
-                //    tempReader.close();
-                //}
-
             }
             else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
                 Mark mark = writer.getMark();
                 writer.writeName(fieldName);
-                if (pipeValue(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, fullPath)) {
+                if (pipeValue(reader, writer, projKeys, fullPath)) {
                     hasValueWritten = true;
                 } else {
                     writer.resetMark(mark);
@@ -125,8 +97,7 @@ public class RawBsonDocumentProjector {
         return hasValueWritten;
     }
 
-    private boolean pipeArray(ByteBuffer bsonInputByteBuffer, ByteBuffer bsonOutputByteBuffer,
-                           BsonBinaryReader reader, InternalBsonBinaryWriter writer,
+    private boolean pipeArray(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
                            Set<String> projKeys, String currentPath) {
         boolean hasValueWritten = false;
         reader.readStartArray();
@@ -134,7 +105,7 @@ public class RawBsonDocumentProjector {
         int idx = 0;
         while (reader.readBsonType() != BsonType.END_OF_DOCUMENT) {
             Mark mark = writer.getMark();
-            if (pipeValue(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, currentPath + "." + idx)) {
+            if (pipeValue(reader, writer, projKeys, currentPath + "." + idx)) {
                 hasValueWritten = true;
             } else {
                 writer.resetMark(mark);
@@ -146,16 +117,15 @@ public class RawBsonDocumentProjector {
         return hasValueWritten;
     }
 
-    private boolean pipeValue(ByteBuffer bsonInputByteBuffer, ByteBuffer bsonOutputByteBuffer,
-                           BsonBinaryReader reader, InternalBsonBinaryWriter writer,
+    private boolean pipeValue(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
                            Set<String> projKeys, String currentPath) {
 
         BsonType bsonType = reader.getCurrentBsonType();
         switch (bsonType) {
             case DOCUMENT:
-                return pipeDocument(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, currentPath);
+                return pipeDocument(reader, writer, projKeys, currentPath);
             case ARRAY:
-                return pipeArray(bsonInputByteBuffer, bsonOutputByteBuffer, reader, writer, projKeys, currentPath);
+                return pipeArray(reader, writer, projKeys, currentPath);
             case DOUBLE:
                 writer.writeDouble(reader.readDouble());
                 break;
