@@ -259,6 +259,8 @@ public class RawBsonDocumentProjector {
         return true;
     }
 
+    // ================ internal helper class ================
+
     /**
      * A BSON output stream that stores the output in a single, un-pooled byte array.
      */
@@ -428,7 +430,7 @@ public class RawBsonDocumentProjector {
 
     static class InternalBsonBinaryWriter extends BsonBinaryWriter {
 
-        private BsonOutput bsonOutput;
+        private final BsonOutput bsonOutput;
 
         public InternalBsonBinaryWriter(BsonOutput bsonOutput, FieldNameValidator validator) {
             super(bsonOutput, validator);

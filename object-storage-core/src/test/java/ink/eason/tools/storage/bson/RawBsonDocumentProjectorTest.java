@@ -216,35 +216,23 @@ class RawBsonDocumentProjectorTest {
                         { "name": "Comprehensive BSON Test" }
                         """
                 ),
-                //arguments(
-                //        "Projecting various BSON data types",
-                //        Set.of("_id", "version", "price", "binaryData", "creationDate", "lastModified", "regex", "jsCodeWithScope", "symbol"),
-                //        """
-                //        {
-                //          "_id": { "$oid": "65fd79d47b59e42e191daab1" },
-                //          "version": { "$numberLong": "123456789012345" },
-                //          "price": { "$numberDecimal": "199.99" },
-                //          "binaryData": { "$binary": { "base64": "AAECAwQFBgc=", "subType": "00" } },
-                //          "creationDate": { "$date": "2025-09-20T10:30:00.000Z" },
-                //          "lastModified": { "$timestamp": { "t": 1758400200, "i": 1 } },
-                //          "regex": { "$regularExpression": { "pattern": "^test", "options": "i" } },
-                //          "jsCodeWithScope": {
-                //            "$code": "function() { return x; }",
-                //            "$scope": { "x": 1 }
-                //          },
-                //          "symbol": { "$symbol": "mySymbol" }
-                //        }
-                //        """
-                //),
                 arguments(
                         "Projecting various BSON data types",
-                        Set.of("jsCodeWithScope"),
+                        Set.of("_id", "version", "price", "binaryData", "creationDate", "lastModified", "regex", "jsCodeWithScope", "symbol"),
                         """
                         {
+                          "_id": { "$oid": "65fd79d47b59e42e191daab1" },
+                          "version": { "$numberLong": "123456789012345" },
+                          "price": { "$numberDecimal": "199.99" },
+                          "binaryData": { "$binary": { "base64": "AAECAwQFBgc=", "subType": "00" } },
+                          "creationDate": { "$date": "2025-09-20T10:30:00.000Z" },
+                          "lastModified": { "$timestamp": { "t": 1758400200, "i": 1 } },
+                          "regex": { "$regularExpression": { "pattern": "^test", "options": "i" } },
                           "jsCodeWithScope": {
                             "$code": "function() { return x; }",
                             "$scope": { "x": 1 }
-                          }
+                          },
+                          "symbol": { "$symbol": "mySymbol" }
                         }
                         """
                 ),
