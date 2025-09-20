@@ -228,6 +228,7 @@ public class RawBsonDocumentProjector {
                 break;
             case JAVASCRIPT_WITH_SCOPE:
                 writer.writeJavaScriptWithScope(reader.readJavaScriptWithScope());
+                pipeDocument(reader, writer, projKeys, currentPath, isFinal);
                 break;
             case INT32:
                 writer.writeInt32(reader.readInt32());
