@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static java.lang.String.format;
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
@@ -39,10 +40,12 @@ public class RawBsonDocumentProjector {
         return new RawBsonDocument(output.array(), 0, output.remaining());
     }
 
-    private ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection) {
+    public ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection) {
         if (projection == null || projection.isEmpty()) {
             throw new IllegalArgumentException("projection is null or empty");
         }
+
+        projection = normalizeProjection(projection);
 
         ByteBuffer bsonOutputByteBuffer = ByteBuffer.allocate(bsonInputByteBuffer.remaining());
 
@@ -54,6 +57,10 @@ public class RawBsonDocumentProjector {
         bsonOutputByteBuffer.limit(bsonOutputByteBuffer.position());
         bsonOutputByteBuffer.position(0);
         return bsonOutputByteBuffer;
+    }
+
+    private Set<String> normalizeProjection(Set<String> projection) {
+        return projection.stream().map(key -> key.replaceAll("\\[(\\d+)]", ".$1")).collect(Collectors.toSet());
     }
 
     private boolean pipeDocument(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
@@ -228,7 +235,8 @@ public class RawBsonDocumentProjector {
                     {
                       "company": "ABC Corp",
                       "position": "Developer",
-                      "years": 5
+                      "years": 5,
+                      "skills": ["Java", "Python"]
                     },
                     {
                       "company": "XYZ Corp",
@@ -240,7 +248,7 @@ public class RawBsonDocumentProjector {
                 """);
 
         RawBsonDocumentProjector projector = new RawBsonDocumentProjector();
-        RawBsonDocument output = projector.project(rawDoc, Set.of("user.notExists", "address.city", "hobbies", "workExperience.0.notExists"));
+        RawBsonDocument output = projector.project(rawDoc, Set.of("user.notExists", "address.city", "hobbies", "workExperience[0].company", "workExperience[1].company","workExperience[0].skills"));
         System.out.println(output.toJson());
 
     }
@@ -412,7 +420,7 @@ public class RawBsonDocumentProjector {
         }
     }
 
-    private static class InternalBsonBinaryWriter extends BsonBinaryWriter {
+    static class InternalBsonBinaryWriter extends BsonBinaryWriter {
 
         private BsonOutput bsonOutput;
 
