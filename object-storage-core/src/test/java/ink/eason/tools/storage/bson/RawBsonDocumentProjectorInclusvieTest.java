@@ -19,8 +19,6 @@ import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 class RawBsonDocumentProjectorInclusvieTest {
 
-    private RawBsonDocumentProjector projector;
-
     private static final String rawJson = """
                 {
                   "_id": { "$oid": "65fd79d47b59e42e191daab1" },
@@ -72,7 +70,7 @@ class RawBsonDocumentProjectorInclusvieTest {
 
     @BeforeEach
     void setUp() {
-        projector = new RawBsonDocumentProjector();
+        
     }
 
     // 提供测试用例数据
@@ -262,34 +260,12 @@ class RawBsonDocumentProjectorInclusvieTest {
         PROTO_DOCUMENT.getByteBuffer().asNIO().get(docBytes);
         RawBsonDocument document = new RawBsonDocument(docBytes);
 
-        RawBsonDocument result = projector.project(document, projection);
+        RawBsonDocument result = RawBsonDocumentProjector.project(document, projection);
 
         // 解析为Document对象进行比较，忽略字段顺序
         Document expectedDoc = Document.parse(expectedJson);
         Document actualDoc = Document.parse(result.toJson());
 
         assertEquals(expectedDoc, actualDoc);
-    }
-
-    @Test
-    @DisplayName("Should throw IllegalArgumentException for null projection")
-    void shouldThrowExceptionForNullProjection() {
-        assertThrows(IllegalArgumentException.class, () -> {
-            byte[] docBytes = new byte[PROTO_DOCUMENT.getByteBuffer().asNIO().remaining()];
-            PROTO_DOCUMENT.getByteBuffer().asNIO().get(docBytes);
-            RawBsonDocument document = new RawBsonDocument(docBytes);
-            projector.project(document, null);
-        });
-    }
-
-    @Test
-    @DisplayName("Should throw IllegalArgumentException for empty projection")
-    void shouldThrowExceptionForEmptyProjection() {
-        assertThrows(IllegalArgumentException.class, () -> {
-            byte[] docBytes = new byte[PROTO_DOCUMENT.getByteBuffer().asNIO().remaining()];
-            PROTO_DOCUMENT.getByteBuffer().asNIO().get(docBytes);
-            RawBsonDocument document = new RawBsonDocument(docBytes);
-            projector.project(document, Collections.emptySet());
-        });
     }
 }

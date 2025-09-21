@@ -21,10 +21,8 @@ import org.bson.BsonMinKey;
 import org.bson.BsonNull;
 import org.bson.BsonObjectId;
 import org.bson.BsonReaderMark;
-import org.bson.BsonRegularExpression;
 import org.bson.BsonString;
 import org.bson.BsonSymbol;
-import org.bson.BsonTimestamp;
 import org.bson.BsonType;
 import org.bson.BsonUndefined;
 import org.bson.BsonValue;
@@ -34,7 +32,6 @@ import org.bson.ByteBufNIO;
 import org.bson.FieldNameValidator;
 import org.bson.RawBsonDocument;
 import org.bson.io.BsonOutput;
-import org.bson.io.ByteBufferBsonInput;
 import org.bson.io.OutputBuffer;
 import org.bson.types.ObjectId;
 
@@ -65,61 +62,83 @@ public class RawBsonDocumentProjector {
 
     private static final String ROOT_PATH = "";
 
-    private final boolean modifyInPlace;
+    private final ProjectionMode mode;
 
-    public RawBsonDocumentProjector() {
-        this.modifyInPlace = false;
+    private final Set<String> projection;
+
+    private final Set<String> filterKeys;
+
+    private final boolean inPlaceModify;
+
+    private final BsonDocument filter;
+
+    public RawBsonDocumentProjector(Set<String> projection, ProjectionMode mode, boolean inPlaceModify, BsonDocument filter) {
+        this.projection = projection != null ? normalizeProjection(projection) : Collections.emptySet();
+        this.mode = mode;
+        this.inPlaceModify = inPlaceModify;
+        this.filterKeys = filter != null ? normalizeFilterKey(filter) : Collections.emptySet();
+        this.filter = filter != null ? filter.clone() : null;
     }
 
-    public RawBsonDocumentProjector(boolean modifyInPlace) {
-        this.modifyInPlace = modifyInPlace;
-    }
+    // =============== public instance methods ===============
 
-    public RawBsonDocument project(RawBsonDocument input, Set<String> projection){
-        return project(input, projection, ProjectionMode.INCLUSIVE);
-    }
-
-    public ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection){
-        return project(bsonInputByteBuffer, projection, ProjectionMode.INCLUSIVE);
-    }
-
-    public RawBsonDocument project(RawBsonDocument input, Set<String> projection, ProjectionMode mode) {
-        Objects.requireNonNull(input);
-        ByteBuffer output = this.project(input.getByteBuffer().asNIO(), projection, mode);
-        return new RawBsonDocument(output.array(), 0, output.remaining());
-    }
-
-    public ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode){
-        return project(bsonInputByteBuffer, projection, mode, null);
-    }
-
-    public RawBsonDocument project(RawBsonDocument input, Set<String> projection, ProjectionMode mode, BsonDocument filter){
-        Objects.requireNonNull(input);
-        ByteBuffer output = this.project(input.getByteBuffer().asNIO(), projection, mode, filter);
+    public RawBsonDocument project(RawBsonDocument input){
+        ByteBuffer output = project(input.getByteBuffer().asNIO());
         if (output == null) return null;
         return new RawBsonDocument(output.array(), 0, output.remaining());
     }
 
-    public ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode, BsonDocument filter) {
-        if (projection == null || projection.isEmpty()) {
-            if (mode == ProjectionMode.EXCLUSIVE) {
-                if (filter != null) {}
-                else if (modifyInPlace) {
-                    return bsonInputByteBuffer;
-                } else {
-                    return cloneByteBuffer(bsonInputByteBuffer);
-                }
-            } else {
-                throw new IllegalArgumentException("projection is null or empty");
-            }
-        }
+    public ByteBuffer project(ByteBuffer bsonInputByteBuffer){
+        return project(bsonInputByteBuffer, inPlaceModify, projection, mode, filter, filterKeys, new HashMap<>());
+    }
 
-        projection = normalizeProjection(projection);
+    // =============== public static methods ===============
 
+    public static RawBsonDocument project(RawBsonDocument input, Set<String> projection){
+        return project(input, false, projection, ProjectionMode.INCLUSIVE, null);
+    }
+
+    private static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection){
+        return project(bsonInputByteBuffer, false, projection, ProjectionMode.INCLUSIVE, null);
+    }
+
+    public static RawBsonDocument project(RawBsonDocument input, Set<String> projection, ProjectionMode mode){
+        return project(input, false, projection, mode, null);
+    }
+
+    private static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode){
+        return project(bsonInputByteBuffer, false, projection, mode, null);
+    }
+
+    public static RawBsonDocument project(RawBsonDocument input, Set<String> projection, ProjectionMode mode, BsonDocument filter){
+        return project(input, false, projection, mode, filter);
+    }
+
+    private static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode, BsonDocument filter){
+        return project(bsonInputByteBuffer, false, projection, mode, filter);
+    }
+
+    public static RawBsonDocument project(RawBsonDocument input, boolean inPlaceModify, Set<String> projection, ProjectionMode mode, BsonDocument filter) {
+        ByteBuffer output = project(input.getByteBuffer().asNIO(), inPlaceModify, projection, mode, filter);
+        if (output == null) return null;
+        return new RawBsonDocument(output.array(), 0, output.remaining());
+    }
+
+    public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, boolean inPlaceModify, Set<String> projection, ProjectionMode mode, BsonDocument filter) {
+
+        projection = projection != null ? normalizeProjection(projection) : Collections.emptySet();
         Set<String> filterKeys = filter != null ? normalizeFilterKey(filter) : Collections.emptySet();
         Map<String, BsonValue> valuesForFilter = filter != null ? new HashMap<>(filterKeys.size()) : Collections.emptyMap();
 
-        ByteBuffer bsonOutputByteBuffer = modifyInPlace
+        return project(bsonInputByteBuffer, inPlaceModify, projection, mode, filter, filterKeys, valuesForFilter);
+
+    }
+
+    // ================ core  ================
+
+    private static ByteBuffer project(ByteBuffer bsonInputByteBuffer, boolean inPlaceModify, Set<String> projection, ProjectionMode mode, BsonDocument filter,Set<String> filterKeys, Map<String,BsonValue> valuesForFilter) {
+
+        ByteBuffer bsonOutputByteBuffer = inPlaceModify
                 ? bsonInputByteBuffer.slice().order(LITTLE_ENDIAN)
                 : ByteBuffer.allocate(bsonInputByteBuffer.remaining()).order(LITTLE_ENDIAN);
 
@@ -138,15 +157,14 @@ public class RawBsonDocumentProjector {
         bsonOutputByteBuffer.limit(bsonOutputByteBuffer.position());
         bsonOutputByteBuffer.position(0);
         return bsonOutputByteBuffer;
+
     }
 
-    // ================ core  ================
-
-    private Set<String> normalizeProjection(Set<String> projection) {
-        return projection.stream().map(key -> key.replaceAll("\\[(\\d+)]", ".$1")).collect(Collectors.toCollection(HashSet::new));
+    private static Set<String> normalizeProjection(Set<String> projection) {
+        return projection.stream().map(key -> key.replaceAll("\\[(\\d+)]", ".$1")).collect(Collectors.toSet());
     }
 
-    private Set<String> normalizeFilterKey(BsonDocument filter) {
+    private static Set<String> normalizeFilterKey(BsonDocument filter) {
         Set<String> keys = new HashSet<>();
 
         for (String key : filter.keySet()) {
@@ -165,7 +183,7 @@ public class RawBsonDocumentProjector {
         return keys.stream().map(key -> key.replaceAll("\\[(\\d+)]", ".$1")).collect(Collectors.toCollection(HashSet::new));
     }
 
-    private boolean pipeDocument(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
+    private static boolean pipeDocument(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
                                  Set<String> projKeys, Set<String> filterKeys, Map<String, BsonValue> valuesForFilter, String currentPath, boolean exactMatched, ProjectionMode mode) {
 
         reader.readStartDocument();
@@ -199,9 +217,6 @@ public class RawBsonDocumentProjector {
                     writer.writeName(fieldName);
                     pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, true, mode);
                     hasValueWritten = true;
-                    if (isExactMatch) {
-                        projKeys.remove(fullPath);
-                    }
                 }
                 else if ((bsonType == BsonType.DOCUMENT || bsonType == BsonType.ARRAY) && (mayHaveProjectKey || mayHaveFilterKey)) {
                     Mark mark = writer.getMark();
@@ -227,9 +242,6 @@ public class RawBsonDocumentProjector {
                         writer.writeName(fieldName);
                         pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, true, mode);
                         writer.resetMark(mark);
-                    }
-                    if (isExactMatch) {
-                        projKeys.remove(fullPath);
                     }
                 }
                 else if ((bsonType == BsonType.DOCUMENT || bsonType == BsonType.ARRAY) && (mayHaveProjectKey || mayHaveFilterKey)) {
@@ -257,7 +269,7 @@ public class RawBsonDocumentProjector {
         return hasValueWritten;
     }
 
-    private boolean pipeArray(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
+    private static boolean pipeArray(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
                               Set<String> projKeys, Set<String> filterKeys, Map<String,BsonValue> valuesForFilter, String currentPath, boolean exactMatched, ProjectionMode mode) {
 
         reader.readStartArray();
@@ -288,9 +300,6 @@ public class RawBsonDocumentProjector {
                 if (isExactMatch||exactMatched) {
                     pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, true, mode);
                     hasValueWritten = true;
-                    if (isExactMatch) {
-                        projKeys.remove(fullPath);
-                    }
                 }
                 else if ((bsonType == BsonType.DOCUMENT || bsonType == BsonType.ARRAY) && (mayHaveProjectKey || mayHaveFilterKey)) {
                     Mark mark = writer.getMark();
@@ -312,9 +321,6 @@ public class RawBsonDocumentProjector {
                         Mark mark = writer.getMark();
                         pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, true, mode);
                         writer.resetMark(mark);
-                    }
-                    if (isExactMatch) {
-                        projKeys.remove(fullPath);
                     }
                 }
                 else if ((bsonType == BsonType.DOCUMENT || bsonType == BsonType.ARRAY) && (mayHaveProjectKey || mayHaveFilterKey)) {
@@ -338,7 +344,7 @@ public class RawBsonDocumentProjector {
         return hasValueWritten;
     }
 
-    private boolean pipeValue(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
+    private static boolean pipeValue(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
                               Set<String> projKeys, Set<String> filterKeys, Map<String, BsonValue> valuesForFilter, String currentPath, boolean exactMatched, ProjectionMode mode) {
 
         BsonType bsonType = reader.getCurrentBsonType();
@@ -414,7 +420,7 @@ public class RawBsonDocumentProjector {
         return true;
     }
 
-    private BsonDocument readDocument(BsonBinaryReader reader) {
+    private static BsonDocument readDocument(BsonBinaryReader reader) {
         BsonDocument document = new BsonDocument();
         reader.readStartDocument();
         while (reader.readBsonType() != BsonType.END_OF_DOCUMENT) {
@@ -424,7 +430,7 @@ public class RawBsonDocumentProjector {
         return document;
     }
 
-    private BsonArray readArray(BsonBinaryReader reader) {
+    private static BsonArray readArray(BsonBinaryReader reader) {
         BsonArray array = new BsonArray();
         reader.readStartArray();
         while (reader.readBsonType() != BsonType.END_OF_DOCUMENT) {
@@ -434,7 +440,7 @@ public class RawBsonDocumentProjector {
         return array;
     }
 
-    private BsonValue readValue(BsonBinaryReader reader) {
+    private static BsonValue readValue(BsonBinaryReader reader) {
         BsonType bsonType = reader.getCurrentBsonType();
         return switch (bsonType) {
             case DOCUMENT -> readDocument(reader);
@@ -900,45 +906,6 @@ public class RawBsonDocumentProjector {
         return clone;
     }
 
-    public static void main(String[] args) {
-        RawBsonDocument rawDoc = RawBsonDocument.parse("""
-                {
-                  "user": {
-                    "name": "Alice",
-                    "age": 30
-                  },
-                  "address": {
-                    "city": "New York",
-                    "zip": 10001
-                  },
-                  "hobbies": ["reading", "traveling"],
-                  "workExperience": [
-                    {
-                      "company": "ABC Corp",
-                      "position": "Developer",
-                      "years": 5,
-                      "skills": ["Java", "Python"]
-                    },
-                    {
-                      "company": "XYZ Corp",
-                      "position": "Manager",
-                      "years": 3
-                    }
-                  ]
-                }
-                """);
-
-        RawBsonDocumentProjector projector = new RawBsonDocumentProjector();
-        long s = System.currentTimeMillis();
-
-        for (int i = 0; i < 1_000_000; i++) {
-            RawBsonDocument output = projector.project(rawDoc, Set.of("user.notExists", "address.city", "hobbies", "workExperience[0].company", "workExperience[1].company","workExperience[0].skills"));
-        }
-        System.out.println("cost time: " + (System.currentTimeMillis() - s));
-        RawBsonDocument output = projector.project(rawDoc, Set.of("user.notExists", "address.city", "hobbies", "workExperience[0].company", "workExperience[1].company","workExperience[0].skills"));
-        System.out.println(output.toJson());
-
-    }
 }
 
 
