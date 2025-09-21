@@ -66,7 +66,15 @@ public class RawBsonDocumentProjector {
 
     public ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode) {
         if (projection == null || projection.isEmpty()) {
-            throw new IllegalArgumentException("projection is null or empty");
+            if (mode == ProjectionMode.EXCLUSIVE) {
+                if (modifyInPlace) {
+                    return bsonInputByteBuffer;
+                } else {
+                    return cloneByteBuffer(bsonInputByteBuffer);
+                }
+            } else {
+                throw new IllegalArgumentException("projection is null or empty");
+            }
         }
 
         projection = normalizeProjection(projection);
@@ -155,6 +163,51 @@ public class RawBsonDocumentProjector {
                     reader.skipValue();
                 }
             }
+            else if (mode == ProjectionMode.EXCLUSIVE) {
+                if (isExactMatch) {
+                    reader.skipValue();
+                    projKeys.remove(fullPath);
+                }
+                else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                    Mark mark = writePermitted ? null : writer.getMark();
+                    writer.writeName(fieldName);
+                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted,mode)) {
+                        hasValueWritten = true;
+                    } else {
+                        if (mark != null) {
+                            writer.resetMark(mark);
+                        }
+                    }
+                }
+                else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                    Mark mark = writePermitted ? null : writer.getMark();
+                    writer.writeName(fieldName);
+                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted,mode)) {
+                        hasValueWritten = true;
+                    } else {
+                        if (mark != null) {
+                            writer.resetMark(mark);
+                        }
+                    }
+                }
+                else {
+                    if ((bsonType == BsonType.DOCUMENT)) {
+                        writer.writeName(fieldName);
+                        writer.pipe(reader);
+                        hasValueWritten = true;
+                    }
+                    else if(bsonType == BsonType.ARRAY) {
+                        writer.writeName(fieldName);
+                        pipeArray(reader, writer, projKeys, fullPath, true, mode);
+                        hasValueWritten = true;
+                    }
+                    else {
+                        writer.writeName(fieldName);
+                        pipeValue(reader, writer, projKeys, fullPath,true, mode);
+                        hasValueWritten = true;
+                    }
+                }
+            }
 
 
 
@@ -218,6 +271,46 @@ public class RawBsonDocumentProjector {
                 }
                 else {
                     reader.skipValue();
+                }
+            }
+            else if (mode == ProjectionMode.EXCLUSIVE) {
+                if (isExactMatch) {
+                    reader.skipValue();
+                    projKeys.remove(fullPath);
+                }
+                else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                    Mark mark = writePermitted ? null : writer.getMark();
+                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted, mode)) {
+                        hasValueWritten = true;
+                    } else {
+                        if (mark != null) {
+                            writer.resetMark(mark);
+                        }
+                    }
+                }
+                else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                    Mark mark = writePermitted ? null : writer.getMark();
+                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted, mode)) {
+                        hasValueWritten = true;
+                    } else {
+                        if (mark != null) {
+                            writer.resetMark(mark);
+                        }
+                    }
+                }
+                else {
+                    if ((bsonType == BsonType.DOCUMENT)) {
+                        writer.pipe(reader);
+                        hasValueWritten = true;
+                    }
+                    else if (bsonType == BsonType.ARRAY) {
+                        pipeArray(reader, writer, projKeys, fullPath, true, mode);
+                        hasValueWritten = true;
+                    }
+                    else {
+                        pipeValue(reader, writer, projKeys, fullPath, true, mode);
+                        hasValueWritten = true;
+                    }
                 }
             }
 
@@ -309,7 +402,7 @@ public class RawBsonDocumentProjector {
     /**
      * A BSON output stream that stores the output in a single, un-pooled byte array.
      */
-    static class InternalOutputByteBuffer extends OutputBuffer {
+    public static class InternalOutputByteBuffer extends OutputBuffer {
 
         /**
          * This ByteBuffer allows us to write ObjectIDs without allocating a temporary array per object, and enables us
@@ -473,7 +566,7 @@ public class RawBsonDocumentProjector {
         }
     }
 
-    static class InternalBsonBinaryWriter extends BsonBinaryWriter {
+    public static class InternalBsonBinaryWriter extends BsonBinaryWriter {
 
         private final BsonOutput bsonOutput;
 
@@ -522,6 +615,24 @@ public class RawBsonDocumentProjector {
             }
         }
 
+    }
+
+    private static ByteBuffer cloneByteBuffer(ByteBuffer bsonInputByteBuffer) {
+        ByteBuffer clone = ByteBuffer.allocate(bsonInputByteBuffer.capacity());
+
+        // Save the original position and limit.
+        int originalPosition = bsonInputByteBuffer.position();
+        int originalLimit = bsonInputByteBuffer.limit();
+
+        // Put the original's content into the new buffer.
+        // The original's position and limit remain unchanged.
+        clone.put(bsonInputByteBuffer.asReadOnlyBuffer());
+
+        // Restore the original position and limit for the clone.
+        clone.position(originalPosition);
+        clone.limit(originalLimit);
+
+        return clone;
     }
 
 
