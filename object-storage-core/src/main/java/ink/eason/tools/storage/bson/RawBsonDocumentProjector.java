@@ -211,8 +211,6 @@ public class RawBsonDocumentProjector {
                 }
             }
 
-
-
         }
 
         reader.readEndDocument();
