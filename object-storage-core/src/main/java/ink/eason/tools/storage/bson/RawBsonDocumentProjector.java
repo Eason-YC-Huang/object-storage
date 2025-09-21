@@ -34,20 +34,20 @@ import static java.nio.ByteOrder.LITTLE_ENDIAN;
 public class RawBsonDocumentProjector {
 
     public static enum ProjectionMode {
-        IN_PLACE,
-        NEW_BUFFER
+        INCLUSIVE,
+        EXCLUSIVE,
     }
 
     private static final String ROOT_PATH = "";
 
-    private final ProjectionMode projectionMode;
+    private final boolean modifyInPlace;
 
     public RawBsonDocumentProjector() {
-        this.projectionMode = ProjectionMode.NEW_BUFFER;
+        this.modifyInPlace = false;
     }
 
-    public RawBsonDocumentProjector(ProjectionMode inPlaceProjection) {
-        this.projectionMode = inPlaceProjection;
+    public RawBsonDocumentProjector(boolean modifyInPlace) {
+        this.modifyInPlace = modifyInPlace;
     }
 
     public RawBsonDocument project(RawBsonDocument input, Set<String> projection) {
@@ -63,7 +63,7 @@ public class RawBsonDocumentProjector {
 
         projection = normalizeProjection(projection);
 
-        ByteBuffer bsonOutputByteBuffer = projectionMode == ProjectionMode.IN_PLACE
+        ByteBuffer bsonOutputByteBuffer = modifyInPlace
                 ? bsonInputByteBuffer.slice().order(LITTLE_ENDIAN)
                 : ByteBuffer.allocate(bsonInputByteBuffer.remaining()).order(LITTLE_ENDIAN);
 

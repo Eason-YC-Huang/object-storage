@@ -1,8 +1,18 @@
 package ink.eason.tools.storage.bson;
 
-import ink.eason.tools.storage.bson.RawBsonDocumentProjector.ProjectionMode;
+
 import org.bson.RawBsonDocument;
-import org.openjdk.jmh.annotations.*;
+import org.openjdk.jmh.annotations.Benchmark;
+import org.openjdk.jmh.annotations.BenchmarkMode;
+import org.openjdk.jmh.annotations.Fork;
+import org.openjdk.jmh.annotations.Level;
+import org.openjdk.jmh.annotations.Measurement;
+import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.Scope;
+import org.openjdk.jmh.annotations.Setup;
+import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.Blackhole;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
@@ -10,7 +20,6 @@ import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -100,9 +109,8 @@ public class ProjectorBenchmark2 {
 
 
     // --- Projector 实例 ---
-    private final RawBsonDocumentProjector inPlaceProjector = new RawBsonDocumentProjector(ProjectionMode.IN_PLACE);
-    private final RawBsonDocumentProjector newBufferProjector = new RawBsonDocumentProjector(ProjectionMode.NEW_BUFFER);
-
+    private final RawBsonDocumentProjector inPlaceProjector = new RawBsonDocumentProjector(true);
+    private final RawBsonDocumentProjector newBufferProjector = new RawBsonDocumentProjector(false);
 
     @Benchmark
     public void highSelectivity_InPlace(ExecutionPlan plan, DataSource ds, Blackhole blackhole) {
