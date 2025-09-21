@@ -143,7 +143,7 @@ public class RawBsonDocumentProjector {
 
     // ================ core  ================
 
-    private static ByteBuffer project(ByteBuffer bsonInputByteBuffer, boolean inPlaceModify, Set<String> projection, ProjectionMode mode, BsonDocument filter,Set<String> filterKeys, Map<String,BsonValue> valuesForFilter) {
+    private static ByteBuffer project(ByteBuffer bsonInputByteBuffer, boolean inPlaceModify, Set<String> fields, ProjectionMode mode, BsonDocument filters, Set<String> filterKeys, Map<String,BsonValue> valuesForFilter) {
 
         ByteBuffer bsonOutputByteBuffer = inPlaceModify
                 ? bsonInputByteBuffer.slice().order(LITTLE_ENDIAN)
@@ -151,11 +151,11 @@ public class RawBsonDocumentProjector {
 
         try (BsonBinaryReader reader = new BsonBinaryReader(bsonInputByteBuffer);
              InternalBsonBinaryWriter writer = new InternalBsonBinaryWriter(new InternalOutputByteBuffer(bsonOutputByteBuffer))) {
-            pipeDocument(reader, writer, projection, filterKeys, valuesForFilter, ROOT_PATH, false, mode);
+            pipeDocument(reader, writer, fields, filterKeys, valuesForFilter, ROOT_PATH, false, mode);
         }
 
-        if (filter != null) {
-            boolean matches = BsonDocumentFilter.matches(valuesForFilter, filter);
+        if (filters != null) {
+            boolean matches = BsonDocumentFilter.matches(valuesForFilter, filters);
             if (!matches) {
                 return null;
             }
