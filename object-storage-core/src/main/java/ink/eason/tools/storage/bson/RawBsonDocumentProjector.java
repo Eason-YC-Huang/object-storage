@@ -2,17 +2,39 @@ package ink.eason.tools.storage.bson;
 
 import ink.eason.tools.storage.bson.RawBsonDocumentProjector.InternalBsonBinaryWriter.Mark;
 import org.bson.AbstractBsonWriter;
+import org.bson.BsonArray;
 import org.bson.BsonBinaryReader;
 import org.bson.BsonBinaryWriter;
 import org.bson.BsonBinaryWriterSettings;
+import org.bson.BsonBoolean;
+import org.bson.BsonDateTime;
+import org.bson.BsonDecimal128;
+import org.bson.BsonDocument;
+import org.bson.BsonDouble;
+import org.bson.BsonInt32;
+import org.bson.BsonInt64;
 import org.bson.BsonInvalidOperationException;
+import org.bson.BsonJavaScript;
+import org.bson.BsonJavaScriptWithScope;
+import org.bson.BsonMaxKey;
+import org.bson.BsonMinKey;
+import org.bson.BsonNull;
+import org.bson.BsonObjectId;
+import org.bson.BsonReaderMark;
+import org.bson.BsonRegularExpression;
+import org.bson.BsonString;
+import org.bson.BsonSymbol;
+import org.bson.BsonTimestamp;
 import org.bson.BsonType;
+import org.bson.BsonUndefined;
+import org.bson.BsonValue;
 import org.bson.BsonWriterSettings;
 import org.bson.ByteBuf;
 import org.bson.ByteBufNIO;
 import org.bson.FieldNameValidator;
 import org.bson.RawBsonDocument;
 import org.bson.io.BsonOutput;
+import org.bson.io.ByteBufferBsonInput;
 import org.bson.io.OutputBuffer;
 import org.bson.types.ObjectId;
 
@@ -22,10 +44,13 @@ import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
@@ -64,10 +89,22 @@ public class RawBsonDocumentProjector {
         return new RawBsonDocument(output.array(), 0, output.remaining());
     }
 
-    public ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode) {
+    public ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode){
+        return project(bsonInputByteBuffer, projection, mode, null);
+    }
+
+    public RawBsonDocument project(RawBsonDocument input, Set<String> projection, ProjectionMode mode, BsonDocument filter){
+        Objects.requireNonNull(input);
+        ByteBuffer output = this.project(input.getByteBuffer().asNIO(), projection, mode, filter);
+        if (output == null) return null;
+        return new RawBsonDocument(output.array(), 0, output.remaining());
+    }
+
+    public ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode, BsonDocument filter) {
         if (projection == null || projection.isEmpty()) {
             if (mode == ProjectionMode.EXCLUSIVE) {
-                if (modifyInPlace) {
+                if (filter != null) {}
+                else if (modifyInPlace) {
                     return bsonInputByteBuffer;
                 } else {
                     return cloneByteBuffer(bsonInputByteBuffer);
@@ -79,13 +116,23 @@ public class RawBsonDocumentProjector {
 
         projection = normalizeProjection(projection);
 
+        Set<String> filterKeys = filter != null ? normalizeFilterKey(filter) : Collections.emptySet();
+        Map<String, BsonValue> valuesForFilter = filter != null ? new HashMap<>(filterKeys.size()) : Collections.emptyMap();
+
         ByteBuffer bsonOutputByteBuffer = modifyInPlace
                 ? bsonInputByteBuffer.slice().order(LITTLE_ENDIAN)
                 : ByteBuffer.allocate(bsonInputByteBuffer.remaining()).order(LITTLE_ENDIAN);
 
         try (BsonBinaryReader reader = new BsonBinaryReader(bsonInputByteBuffer);
              InternalBsonBinaryWriter writer = new InternalBsonBinaryWriter(new InternalOutputByteBuffer(bsonOutputByteBuffer))) {
-            pipeDocument(reader, writer, projection, ROOT_PATH, false, mode);
+            pipeDocument(reader, writer, projection, filterKeys, valuesForFilter, ROOT_PATH, false, mode);
+        }
+
+        if (filter != null) {
+            boolean matches = BsonDocumentFilter.matches(valuesForFilter, filter);
+            if (!matches) {
+                return null;
+            }
         }
 
         bsonOutputByteBuffer.limit(bsonOutputByteBuffer.position());
@@ -99,12 +146,27 @@ public class RawBsonDocumentProjector {
         return projection.stream().map(key -> key.replaceAll("\\[(\\d+)]", ".$1")).collect(Collectors.toCollection(HashSet::new));
     }
 
-    private boolean pipeDocument(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
-                              Set<String> projKeys, String currentPath, boolean writePermitted, ProjectionMode mode) {
+    private Set<String> normalizeFilterKey(BsonDocument filter) {
+        Set<String> keys = new HashSet<>();
 
-        if (projKeys.isEmpty()) {
-            return true;
+        for (String key : filter.keySet()) {
+            BsonValue filterValue = filter.get(key);
+            switch (key) {
+                case "$and", "$or":
+                    for (BsonValue condition : filterValue.asArray()) {
+                        keys.addAll(normalizeFilterKey(condition.asDocument()));
+                    }
+                    break;
+                default:
+                    keys.add(key);
+            }
         }
+
+        return keys.stream().map(key -> key.replaceAll("\\[(\\d+)]", ".$1")).collect(Collectors.toCollection(HashSet::new));
+    }
+
+    private boolean pipeDocument(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
+                                 Set<String> projKeys, Set<String> filterKeys, Map<String, BsonValue> valuesForFilter, String currentPath, boolean writePermitted, ProjectionMode mode) {
 
         reader.readStartDocument();
         writer.writeStartDocument();
@@ -116,23 +178,28 @@ public class RawBsonDocumentProjector {
             BsonType bsonType = reader.getCurrentBsonType();
 
             String fullPath = currentPath.isEmpty() ? fieldName : currentPath + "." + fieldName;
-            boolean isExactMatch = projKeys.contains(fullPath);
+            if (filterKeys.contains(fullPath)) {
+                BsonReaderMark mark = reader.getMark();
+                valuesForFilter.put(fullPath, readValue(reader));
+                mark.reset();
+            }
 
+            boolean isExactMatch = projKeys.contains(fullPath);
             if (mode == ProjectionMode.INCLUSIVE) {
                 if (isExactMatch||writePermitted) {
                     if ((bsonType == BsonType.DOCUMENT)) {
                         writer.writeName(fieldName);
-                        writer.pipe(reader);
+                        pipeDocument(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, true, mode);
                         hasValueWritten = true;
                     }
                     else if(bsonType == BsonType.ARRAY) {
                         writer.writeName(fieldName);
-                        pipeArray(reader, writer, projKeys, fullPath, true,mode);
+                        pipeArray(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, true, mode);
                         hasValueWritten = true;
                     }
                     else {
                         writer.writeName(fieldName);
-                        pipeValue(reader, writer, projKeys, fullPath,true,mode);
+                        pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath,true,mode);
                         hasValueWritten = true;
                     }
                     if (isExactMatch) {
@@ -142,7 +209,7 @@ public class RawBsonDocumentProjector {
                 else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
                     Mark mark = writePermitted ? null : writer.getMark();
                     writer.writeName(fieldName);
-                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted,mode)) {
+                    if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted,mode)) {
                         hasValueWritten = true;
                     } else {
                         if (mark != null) {
@@ -153,7 +220,7 @@ public class RawBsonDocumentProjector {
                 else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
                     Mark mark = writePermitted ? null : writer.getMark();
                     writer.writeName(fieldName);
-                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted,mode)) {
+                    if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted,mode)) {
                         hasValueWritten = true;
                     } else {
                         if (mark != null) {
@@ -173,7 +240,7 @@ public class RawBsonDocumentProjector {
                 else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
                     Mark mark = writePermitted ? null : writer.getMark();
                     writer.writeName(fieldName);
-                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted,mode)) {
+                    if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted,mode)) {
                         hasValueWritten = true;
                     } else {
                         if (mark != null) {
@@ -184,7 +251,7 @@ public class RawBsonDocumentProjector {
                 else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
                     Mark mark = writePermitted ? null : writer.getMark();
                     writer.writeName(fieldName);
-                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted,mode)) {
+                    if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted,mode)) {
                         hasValueWritten = true;
                     } else {
                         if (mark != null) {
@@ -195,17 +262,17 @@ public class RawBsonDocumentProjector {
                 else {
                     if ((bsonType == BsonType.DOCUMENT)) {
                         writer.writeName(fieldName);
-                        writer.pipe(reader);
+                        pipeDocument(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, true, mode);
                         hasValueWritten = true;
                     }
                     else if(bsonType == BsonType.ARRAY) {
                         writer.writeName(fieldName);
-                        pipeArray(reader, writer, projKeys, fullPath, true, mode);
+                        pipeArray(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, true, mode);
                         hasValueWritten = true;
                     }
                     else {
                         writer.writeName(fieldName);
-                        pipeValue(reader, writer, projKeys, fullPath,true, mode);
+                        pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath,true, mode);
                         hasValueWritten = true;
                     }
                 }
@@ -220,7 +287,7 @@ public class RawBsonDocumentProjector {
     }
 
     private boolean pipeArray(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
-                              Set<String> projKeys, String currentPath, boolean writePermitted, ProjectionMode mode) {
+                              Set<String> projKeys, Set<String> filterKeys, Map<String,BsonValue> valuesForFilter, String currentPath, boolean writePermitted, ProjectionMode mode) {
 
         reader.readStartArray();
         writer.writeStartArray();
@@ -231,18 +298,23 @@ public class RawBsonDocumentProjector {
 
             BsonType bsonType = reader.getCurrentBsonType();
             String fullPath = currentPath + "." + idx;
-            boolean isExactMatch = projKeys.contains(fullPath);
+            if (filterKeys.contains(fullPath)) {
+                BsonReaderMark mark = reader.getMark();
+                valuesForFilter.put(fullPath, readValue(reader));
+                mark.reset();
+            }
 
+            boolean isExactMatch = projKeys.contains(fullPath);
             if (mode == ProjectionMode.INCLUSIVE) {
                 if (isExactMatch||writePermitted) {
                     if ((bsonType == BsonType.DOCUMENT)) {
                         writer.pipe(reader);
                         hasValueWritten = true;
                     } else if (bsonType == BsonType.ARRAY) {
-                        pipeArray(reader, writer, projKeys, fullPath, true, mode);
+                        pipeArray(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, true, mode);
                         hasValueWritten = true;
                     } else {
-                        pipeValue(reader, writer, projKeys, fullPath, true, mode);
+                        pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, true, mode);
                         hasValueWritten = true;
                     }
                     if (isExactMatch) {
@@ -251,7 +323,7 @@ public class RawBsonDocumentProjector {
                 }
                 else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
                     Mark mark = writePermitted ? null : writer.getMark();
-                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted, mode)) {
+                    if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted, mode)) {
                         hasValueWritten = true;
                     } else {
                         if (mark != null) {
@@ -261,7 +333,7 @@ public class RawBsonDocumentProjector {
                 }
                 else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
                     Mark mark = writePermitted ? null : writer.getMark();
-                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted, mode)) {
+                    if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted, mode)) {
                         hasValueWritten = true;
                     } else {
                         if (mark != null) {
@@ -280,7 +352,7 @@ public class RawBsonDocumentProjector {
                 }
                 else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
                     Mark mark = writePermitted ? null : writer.getMark();
-                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted, mode)) {
+                    if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted, mode)) {
                         hasValueWritten = true;
                     } else {
                         if (mark != null) {
@@ -290,7 +362,7 @@ public class RawBsonDocumentProjector {
                 }
                 else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
                     Mark mark = writePermitted ? null : writer.getMark();
-                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted, mode)) {
+                    if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted, mode)) {
                         hasValueWritten = true;
                     } else {
                         if (mark != null) {
@@ -304,11 +376,11 @@ public class RawBsonDocumentProjector {
                         hasValueWritten = true;
                     }
                     else if (bsonType == BsonType.ARRAY) {
-                        pipeArray(reader, writer, projKeys, fullPath, true, mode);
+                        pipeArray(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, true, mode);
                         hasValueWritten = true;
                     }
                     else {
-                        pipeValue(reader, writer, projKeys, fullPath, true, mode);
+                        pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, true, mode);
                         hasValueWritten = true;
                     }
                 }
@@ -322,14 +394,14 @@ public class RawBsonDocumentProjector {
     }
 
     private boolean pipeValue(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
-                           Set<String> projKeys, String currentPath, boolean writePermitted,ProjectionMode mode) {
+                           Set<String> projKeys, Set<String> filterKeys, Map<String,BsonValue> valuesForFilter, String currentPath, boolean writePermitted,ProjectionMode mode) {
 
         BsonType bsonType = reader.getCurrentBsonType();
         switch (bsonType) {
             case DOCUMENT:
-                return pipeDocument(reader, writer, projKeys, currentPath, writePermitted,mode);
+                return pipeDocument(reader, writer, projKeys, filterKeys, valuesForFilter, currentPath, writePermitted,mode);
             case ARRAY:
-                return pipeArray(reader, writer, projKeys, currentPath, writePermitted,mode);
+                return pipeArray(reader, writer, projKeys, filterKeys, valuesForFilter, currentPath, writePermitted,mode);
             case DOUBLE:
                 writer.writeDouble(reader.readDouble());
                 break;
@@ -366,7 +438,7 @@ public class RawBsonDocumentProjector {
                 break;
             case JAVASCRIPT_WITH_SCOPE:
                 writer.writeJavaScriptWithScope(reader.readJavaScriptWithScope());
-                pipeDocument(reader, writer, projKeys, currentPath, writePermitted,mode);
+                pipeDocument(reader, writer, projKeys, filterKeys, valuesForFilter, currentPath, writePermitted,mode);
                 break;
             case INT32:
                 writer.writeInt32(reader.readInt32());
@@ -395,6 +467,66 @@ public class RawBsonDocumentProjector {
                 throw new BsonInvalidOperationException("Unsupported BSON type: " + bsonType);
         }
         return true;
+    }
+
+    private BsonDocument readDocument(BsonBinaryReader reader) {
+        BsonDocument document = new BsonDocument();
+        reader.readStartDocument();
+        while (reader.readBsonType() != BsonType.END_OF_DOCUMENT) {
+            document.put(reader.readName(), readValue(reader));
+        }
+        reader.readEndDocument();
+        return document;
+    }
+
+    private BsonArray readArray(BsonBinaryReader reader) {
+        BsonArray array = new BsonArray();
+        reader.readStartArray();
+        while (reader.readBsonType() != BsonType.END_OF_DOCUMENT) {
+            array.add(readValue(reader));
+        }
+        reader.readEndArray();
+        return array;
+    }
+
+    private BsonValue readValue(BsonBinaryReader reader) {
+        BsonType bsonType = reader.getCurrentBsonType();
+        return switch (bsonType) {
+            case DOCUMENT -> readDocument(reader);
+            case ARRAY -> readArray(reader);
+            case DOUBLE -> new BsonDouble(reader.readDouble());
+            case STRING -> new BsonString(reader.readString());
+            case BINARY -> reader.readBinaryData();
+            case UNDEFINED -> {
+                reader.readUndefined();
+                yield new BsonUndefined();
+            }
+            case OBJECT_ID -> new BsonObjectId(reader.readObjectId());
+            case BOOLEAN -> new BsonBoolean(reader.readBoolean());
+            case DATE_TIME -> new BsonDateTime(reader.readDateTime());
+            case NULL -> {
+                reader.readNull();
+                yield new BsonNull();
+            }
+            case REGULAR_EXPRESSION -> reader.readRegularExpression();
+            case JAVASCRIPT -> new BsonJavaScript(reader.readJavaScript());
+            case SYMBOL -> new BsonSymbol(reader.readSymbol());
+            case JAVASCRIPT_WITH_SCOPE -> new BsonJavaScriptWithScope(reader.readJavaScriptWithScope(), readDocument(reader));
+            case INT32 -> new BsonInt32(reader.readInt32());
+            case TIMESTAMP -> reader.readTimestamp();
+            case INT64 -> new BsonInt64(reader.readInt64());
+            case DECIMAL128 -> new BsonDecimal128(reader.readDecimal128());
+            case MIN_KEY -> {
+                reader.readMinKey();
+                yield new BsonMinKey();
+            }
+            case DB_POINTER -> reader.readDBPointer();
+            case MAX_KEY -> {
+                reader.readMaxKey();
+                yield new BsonMaxKey();
+            }
+            default -> throw new BsonInvalidOperationException("Unsupported BSON type: " + bsonType);
+        };
     }
 
     // ================ internal helper class ================
@@ -568,26 +700,30 @@ public class RawBsonDocumentProjector {
 
     public static class InternalBsonBinaryWriter extends BsonBinaryWriter {
 
-        private final BsonOutput bsonOutput;
+        private final InternalOutputByteBuffer bsonOutput;
 
-        public InternalBsonBinaryWriter(BsonOutput bsonOutput, FieldNameValidator validator) {
+        public InternalBsonBinaryWriter(InternalOutputByteBuffer bsonOutput, FieldNameValidator validator) {
             super(bsonOutput, validator);
             this.bsonOutput = bsonOutput;
         }
 
-        public InternalBsonBinaryWriter(BsonOutput bsonOutput) {
+        public InternalBsonBinaryWriter(InternalOutputByteBuffer bsonOutput) {
             super(bsonOutput);
             this.bsonOutput = bsonOutput;
         }
 
-        public InternalBsonBinaryWriter(BsonWriterSettings settings, BsonBinaryWriterSettings binaryWriterSettings, BsonOutput bsonOutput) {
+        public InternalBsonBinaryWriter(BsonWriterSettings settings, BsonBinaryWriterSettings binaryWriterSettings, InternalOutputByteBuffer bsonOutput) {
             super(settings, binaryWriterSettings, bsonOutput);
             this.bsonOutput = bsonOutput;
         }
 
-        public InternalBsonBinaryWriter(BsonWriterSettings settings, BsonBinaryWriterSettings binaryWriterSettings, BsonOutput bsonOutput, FieldNameValidator validator) {
+        public InternalBsonBinaryWriter(BsonWriterSettings settings, BsonBinaryWriterSettings binaryWriterSettings, InternalOutputByteBuffer bsonOutput, FieldNameValidator validator) {
             super(settings, binaryWriterSettings, bsonOutput, validator);
             this.bsonOutput = bsonOutput;
+        }
+
+        public InternalOutputByteBuffer getInternalOutputByteBuffer() {
+            return bsonOutput;
         }
 
         public Mark getMark() {
@@ -617,6 +753,190 @@ public class RawBsonDocumentProjector {
 
     }
 
+    public static class BsonDocumentFilter {
+
+        /**
+         * 检查单个 doc 是否满足过滤条件
+         *
+         * @param doc    单个 Bson 文档
+         * @param filter 过滤条件
+         * @return 如果匹配则返回 true，否则返回 false
+         */
+        public static boolean matches(Map<String,BsonValue> doc, BsonDocument filter) {
+            for (String key : filter.keySet()) {
+                BsonValue filterValue = filter.get(key);
+                switch (key) {
+                    case "$and":
+                        if (!handleAnd(doc, filterValue.asArray())) {
+                            return false;
+                        }
+                        break;
+                    case "$or":
+                        if (!handleOr(doc, filterValue.asArray())) {
+                            return false;
+                        }
+                        break;
+                    default:
+                        BsonValue docValue = doc.get(key);
+                        if (!fieldMatches(docValue, filterValue)) {
+                            return false;
+                        }
+                }
+            }
+            return true;
+        }
+
+        /**
+         * 处理 $and 操作符
+         */
+        private static boolean handleAnd(Map<String,BsonValue> doc, BsonArray conditions) {
+            for (BsonValue condition : conditions) {
+                if (!matches(doc, condition.asDocument())) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /**
+         * 处理 $or 操作符
+         */
+        private static boolean handleOr(Map<String,BsonValue> doc, BsonArray conditions) {
+            for (BsonValue condition : conditions) {
+                if (matches(doc, condition.asDocument())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
+         * 检查字段是否匹配过滤条件
+         *
+         * @param docValue    文档中的字段值
+         * @param filterValue 过滤条件的值
+         * @return 如果匹配则返回 true
+         */
+        private static boolean fieldMatches(BsonValue docValue, BsonValue filterValue) {
+            if (filterValue.isDocument()) {
+                BsonDocument conditionDoc = filterValue.asDocument();
+                for (String operator : conditionDoc.keySet()) {
+                    BsonValue operatorValue = conditionDoc.get(operator);
+                    if (!applyOperator(docValue, operator, operatorValue)) {
+                        return false;
+                    }
+                }
+                return true;
+            } else {
+                // 隐式的 $eq 操作
+                return compare(docValue, filterValue) == 0;
+            }
+        }
+
+        /**
+         * 应用具体的操作符
+         */
+        private static boolean applyOperator(BsonValue docValue, String operator, BsonValue operatorValue) {
+            // 如果文档中字段不存在 (docValue == null)，大部分操作符都应该返回 false
+            if (docValue == null) {
+                return operator.equals("$ne") || operator.equals("$nin");
+            }
+
+            switch (operator) {
+                case "$eq":
+                    return compare(docValue, operatorValue) == 0;
+                case "$ne":
+                    return compare(docValue, operatorValue) != 0;
+                case "$gt":
+                    return compare(docValue, operatorValue) > 0;
+                case "$gte":
+                    return compare(docValue, operatorValue) >= 0;
+                case "$lt":
+                    return compare(docValue, operatorValue) < 0;
+                case "$lte":
+                    return compare(docValue, operatorValue) <= 0;
+                case "$in":
+                    return operatorValue.asArray().stream().anyMatch(val -> compare(docValue, val) == 0);
+                case "$nin":
+                    return operatorValue.asArray().stream().noneMatch(val -> compare(docValue, val) == 0);
+                case "$regex":
+                    return handleRegex(docValue, operatorValue);
+                default:
+                    // 不支持的操作符，可以抛出异常或返回 false
+                    return false;
+            }
+        }
+
+        /**
+         * 处理正则表达式匹配
+         */
+        private static boolean handleRegex(BsonValue docValue, BsonValue regexValue) {
+            if (!docValue.isString()) {
+                return false;
+            }
+            String docString = docValue.asString().getValue();
+            Pattern pattern = Pattern.compile(regexValue.asString().getValue());
+            return pattern.matcher(docString).find();
+        }
+
+        /**
+         * 通用的比较方法
+         *
+         * @return 0 for equal, > 0 for docValue > filterValue, < 0 for docValue < filterValue
+         */
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        private static int compare(BsonValue docValue, BsonValue filterValue) {
+            if (docValue == null && filterValue == null) return 0;
+            if (docValue == null) return -1;
+            if (filterValue == null) return 1;
+            if (docValue.getBsonType() != filterValue.getBsonType()) {
+                // 对于数字类型，可以进行转换后比较
+                if (docValue.isNumber() && filterValue.isNumber()) {
+                    Number num1 = getNumberFromBsonValue(docValue);
+                    Number num2 = getNumberFromBsonValue(filterValue);
+                    return Double.compare(num1.doubleValue(), num2.doubleValue());
+                }
+                // 类型不同且无法比较，则认为不相等
+                return -1;
+            }
+
+            // 类型相同
+            switch (docValue.getBsonType()) {
+                case INT32:
+                    return Integer.compare(docValue.asInt32().getValue(), filterValue.asInt32().getValue());
+                case INT64:
+                    return Long.compare(docValue.asInt64().getValue(), filterValue.asInt64().getValue());
+                case DOUBLE:
+                    return Double.compare(docValue.asDouble().getValue(), filterValue.asDouble().getValue());
+                case STRING:
+                    return docValue.asString().getValue().compareTo(filterValue.asString().getValue());
+                case DATE_TIME:
+                    return Long.compare(docValue.asDateTime().getValue(), filterValue.asDateTime().getValue());
+                case BOOLEAN:
+                    return Boolean.compare(docValue.asBoolean().getValue(), filterValue.asBoolean().getValue());
+                case OBJECT_ID:
+                    return docValue.asObjectId().getValue().compareTo(filterValue.asObjectId().getValue());
+                // 对于其他类型，我们只支持判等
+                default:
+                    return docValue.equals(filterValue) ? 0 : -1;
+            }
+        }
+
+        private static Number getNumberFromBsonValue(BsonValue bsonValue) {
+            if (bsonValue.isInt32()) {
+                return bsonValue.asInt32().getValue();
+            } else if (bsonValue.isInt64()) {
+                return bsonValue.asInt64().getValue();
+            } else if (bsonValue.isDouble()) {
+                return bsonValue.asDouble().getValue();
+            } else if (bsonValue.isDecimal128()) {
+                return bsonValue.asDecimal128().getValue().bigDecimalValue();
+            }
+            throw new IllegalArgumentException("Unsupported number type: " + bsonValue.getBsonType());
+        }
+
+    }
+
     private static ByteBuffer cloneByteBuffer(ByteBuffer bsonInputByteBuffer) {
         ByteBuffer clone = ByteBuffer.allocate(bsonInputByteBuffer.capacity());
 
@@ -634,7 +954,6 @@ public class RawBsonDocumentProjector {
 
         return clone;
     }
-
 
     public static void main(String[] args) {
         RawBsonDocument rawDoc = RawBsonDocument.parse("""

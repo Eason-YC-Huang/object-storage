@@ -1,5 +1,8 @@
 package ink.eason.tools.storage.bson;
 
+import ink.eason.tools.storage.bson.RawBsonDocumentProjector.ProjectionMode;
+import org.bson.BsonDocument;
+import org.bson.BsonString;
 import org.bson.Document;
 import org.bson.RawBsonDocument;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,6 +12,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -21,54 +25,54 @@ class RawBsonDocumentProjectorTest {
 
     private RawBsonDocumentProjector projector;
 
-    // 一个包含所有BSON数据类型和复杂嵌套结构的源文档
-    // 使用MongoDB Extended JSON v2格式编写
-    private static final RawBsonDocument PROTO_DOCUMENT = RawBsonDocument.parse("""
-            {
-              "_id": { "$oid": "65fd79d47b59e42e191daab1" },
-              "name": "Comprehensive BSON Test",
-              "level": { "$numberInt": "100" },
-              "isPublished": true,
-              "rating": { "$numberDouble": "4.8" },
-              "version": { "$numberLong": "123456789012345" },
-              "price": { "$numberDecimal": "199.99" },
-              "author": {
-                "name": "Eason",
-                "email": "eason@example.com",
-                "address": {
-                  "city": "Cyber City",
-                  "zip": "90210"
-                }
-              },
-              "tags": [ "bson", "java", "mongodb", "test" ],
-              "history": [
-                { "version": 1, "action": "created", "details": { "by": "user1" } },
-                { "version": 2, "action": "updated", "status": "approved" },
-                { "version": 3, "action": "reviewed" }
-              ],
-              "binaryData": { "$binary": { "base64": "AAECAwQFBgc=", "subType": "00" } },
-              "creationDate": { "$date": "2025-09-20T10:30:00.000Z" },
-              "lastModified": { "$timestamp": { "t": 1758400200, "i": 1 } },
-              "regex": { "$regularExpression": { "pattern": "^test", "options": "i" } },
-              "dbPointer": { "$dbPointer": { "$ref": "users.prod", "$id": { "$oid": "65fd79d47b59e42e191daab2" } } },
-              "jsCodeWithScope": {
-                "$code": "function() { return x; }",
-                "$scope": { "x": 1 }
-              },
-              "symbol": { "$symbol": "mySymbol" },
-              "metadata": {
-                "nullableField": null,
-                "undefinedField": { "$undefined": true },
-                "minKeyField": { "$minKey": 1 },
-                "maxKeyField": { "$maxKey": 1 },
-                "extra": {
-                  "level3": {
-                    "value": "deeply nested value"
+    private static final String rawJson = """
+                {
+                  "_id": { "$oid": "65fd79d47b59e42e191daab1" },
+                  "name": "Comprehensive BSON Test",
+                  "level": { "$numberInt": "100" },
+                  "isPublished": true,
+                  "rating": { "$numberDouble": "4.8" },
+                  "version": { "$numberLong": "123456789012345" },
+                  "price": { "$numberDecimal": "199.99" },
+                  "author": {
+                    "name": "Eason",
+                    "email": "eason@example.com",
+                    "address": {
+                      "city": "Cyber City",
+                      "zip": "90210"
+                    }
+                  },
+                  "tags": [ "bson", "java", "mongodb", "test" ],
+                  "history": [
+                    { "version": 1, "action": "created", "details": { "by": "user1" } },
+                    { "version": 2, "action": "updated", "status": "approved" },
+                    { "version": 3, "action": "reviewed" }
+                  ],
+                  "binaryData": { "$binary": { "base64": "AAECAwQFBgc=", "subType": "00" } },
+                  "creationDate": { "$date": "2025-09-20T10:30:00.000Z" },
+                  "lastModified": { "$timestamp": { "t": 1758400200, "i": 1 } },
+                  "regex": { "$regularExpression": { "pattern": "^test", "options": "i" } },
+                  "dbPointer": { "$dbPointer": { "$ref": "users.prod", "$id": { "$oid": "65fd79d47b59e42e191daab2" } } },
+                  "jsCodeWithScope": {
+                    "$code": "function() { return x; }",
+                    "$scope": { "x": 1 }
+                  },
+                  "symbol": { "$symbol": "mySymbol" },
+                  "metadata": {
+                    "nullableField": null,
+                    "undefinedField": { "$undefined": true },
+                    "minKeyField": { "$minKey": 1 },
+                    "maxKeyField": { "$maxKey": 1 },
+                    "extra": {
+                      "level3": {
+                        "value": "deeply nested value"
+                      }
+                    }
                   }
                 }
-              }
-            }
-            """);
+                """;
+
+    private static final RawBsonDocument PROTO_DOCUMENT = RawBsonDocument.parse(rawJson);
 
     @BeforeEach
     void setUp() {
@@ -291,5 +295,17 @@ class RawBsonDocumentProjectorTest {
             RawBsonDocument document = new RawBsonDocument(docBytes);
             projector.project(document, Collections.emptySet());
         });
+    }
+
+    @Test
+    void testFilter() {
+        byte[] docBytes = new byte[PROTO_DOCUMENT.getByteBuffer().asNIO().remaining()];
+        PROTO_DOCUMENT.getByteBuffer().asNIO().get(docBytes);
+        RawBsonDocument document = new RawBsonDocument(docBytes);
+        RawBsonDocument result = projector.project(document, Collections.emptySet(), ProjectionMode.EXCLUSIVE, new BsonDocument()
+                .append("name", new BsonString("Comprehensive BSON Test"))
+                .append("author.name", new BsonString("Eason")));
+        System.out.println(result);
+
     }
 }
