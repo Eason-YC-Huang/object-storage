@@ -1,5 +1,6 @@
 package ink.eason.tools.storage.bson;
 
+import ink.eason.tools.storage.bson.RawBsonDocumentProjector.ProjectionMode;
 import org.bson.BsonDocument;
 import org.bson.RawBsonDocument;
 import org.junit.jupiter.api.BeforeAll;
@@ -260,6 +261,17 @@ class RawBsonDocumentProjectorFilterTest {
             RawBsonDocument result = projector.project(testDoc, DUMMY_PROJECTION, RawBsonDocumentProjector.ProjectionMode.INCLUSIVE, filter);
             assertNotNull(result, "Should successfully match a field in a nested document");
         }
+
+        @Test
+        @DisplayName("Nested Document: Success filtering on a field in a nested document 2")
+        void testMatch_NestedDocumentField_2_Success() {
+            // filter: nestedDoc.nestedInt > 49
+            BsonDocument filter = BsonDocument.parse("{ 'nestedDoc.nestedInt': { '$gt': 49 } }");
+            RawBsonDocument result = projector.project(testDoc, Set.of("nestedDoc"), ProjectionMode.EXCLUSIVE, filter);
+            System.out.println(result);
+            assertNotNull(result, "Should successfully match a field in a nested document");
+        }
+
 
         @Test
         @DisplayName("Nested Document: Fail filtering on a field in a nested document")
