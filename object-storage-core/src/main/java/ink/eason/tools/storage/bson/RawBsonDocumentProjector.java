@@ -90,7 +90,7 @@ public class RawBsonDocumentProjector {
     }
 
     private boolean pipeDocument(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
-                              Set<String> projKeys, String currentPath, boolean exactMatched,ProjectionMode mode) {
+                              Set<String> projKeys, String currentPath, boolean writePermitted, ProjectionMode mode) {
 
         if (projKeys.isEmpty()) {
             return true;
@@ -107,51 +107,56 @@ public class RawBsonDocumentProjector {
 
             String fullPath = currentPath.isEmpty() ? fieldName : currentPath + "." + fieldName;
             boolean isExactMatch = projKeys.contains(fullPath);
-            if (isExactMatch||exactMatched) {
-                if ((bsonType == BsonType.DOCUMENT)) {
-                    writer.writeName(fieldName);
-                    writer.pipe(reader);
-                    hasValueWritten = true;
+
+            if (mode == ProjectionMode.INCLUSIVE) {
+                if (isExactMatch||writePermitted) {
+                    if ((bsonType == BsonType.DOCUMENT)) {
+                        writer.writeName(fieldName);
+                        writer.pipe(reader);
+                        hasValueWritten = true;
+                    }
+                    else if(bsonType == BsonType.ARRAY) {
+                        writer.writeName(fieldName);
+                        pipeArray(reader, writer, projKeys, fullPath, true,mode);
+                        hasValueWritten = true;
+                    }
+                    else {
+                        writer.writeName(fieldName);
+                        pipeValue(reader, writer, projKeys, fullPath,true,mode);
+                        hasValueWritten = true;
+                    }
+                    if (isExactMatch) {
+                        projKeys.remove(fullPath);
+                    }
                 }
-                else if(bsonType == BsonType.ARRAY) {
+                else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                    Mark mark = writePermitted ? null : writer.getMark();
                     writer.writeName(fieldName);
-                    pipeArray(reader, writer, projKeys, fullPath, true,mode);
-                    hasValueWritten = true;
+                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted,mode)) {
+                        hasValueWritten = true;
+                    } else {
+                        if (mark != null) {
+                            writer.resetMark(mark);
+                        }
+                    }
+                }
+                else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                    Mark mark = writePermitted ? null : writer.getMark();
+                    writer.writeName(fieldName);
+                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted,mode)) {
+                        hasValueWritten = true;
+                    } else {
+                        if (mark != null) {
+                            writer.resetMark(mark);
+                        }
+                    }
                 }
                 else {
-                    writer.writeName(fieldName);
-                    pipeValue(reader, writer, projKeys, fullPath,true,mode);
-                    hasValueWritten = true;
-                }
-                if (isExactMatch) {
-                    projKeys.remove(fullPath);
+                    reader.skipValue();
                 }
             }
-            else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
-                Mark mark = exactMatched ? null : writer.getMark();
-                writer.writeName(fieldName);
-                if (pipeValue(reader, writer, projKeys, fullPath, exactMatched,mode)) {
-                    hasValueWritten = true;
-                } else {
-                    if (mark != null) {
-                        writer.resetMark(mark);
-                    }
-                }
-            }
-            else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
-                Mark mark = exactMatched ? null : writer.getMark();
-                writer.writeName(fieldName);
-                if (pipeValue(reader, writer, projKeys, fullPath, exactMatched,mode)) {
-                    hasValueWritten = true;
-                } else {
-                    if (mark != null) {
-                        writer.resetMark(mark);
-                    }
-                }
-            }
-            else {
-                reader.skipValue();
-            }
+
+
 
         }
 
@@ -162,7 +167,7 @@ public class RawBsonDocumentProjector {
     }
 
     private boolean pipeArray(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
-                              Set<String> projKeys, String currentPath, boolean exactMatched,ProjectionMode mode) {
+                              Set<String> projKeys, String currentPath, boolean writePermitted, ProjectionMode mode) {
 
         reader.readStartArray();
         writer.writeStartArray();
@@ -172,49 +177,50 @@ public class RawBsonDocumentProjector {
         while (reader.readBsonType() != BsonType.END_OF_DOCUMENT) {
 
             BsonType bsonType = reader.getCurrentBsonType();
-
             String fullPath = currentPath + "." + idx;
             boolean isExactMatch = projKeys.contains(fullPath);
-            if (isExactMatch || exactMatched) {
-                if ((bsonType == BsonType.DOCUMENT)) {
-                    writer.pipe(reader);
-                    hasValueWritten = true;
+
+            if (mode == ProjectionMode.INCLUSIVE) {
+                if (isExactMatch||writePermitted) {
+                    if ((bsonType == BsonType.DOCUMENT)) {
+                        writer.pipe(reader);
+                        hasValueWritten = true;
+                    } else if (bsonType == BsonType.ARRAY) {
+                        pipeArray(reader, writer, projKeys, fullPath, true, mode);
+                        hasValueWritten = true;
+                    } else {
+                        pipeValue(reader, writer, projKeys, fullPath, true, mode);
+                        hasValueWritten = true;
+                    }
+                    if (isExactMatch) {
+                        projKeys.remove(fullPath);
+                    }
                 }
-                else if(bsonType == BsonType.ARRAY) {
-                    pipeArray(reader, writer, projKeys, fullPath, true,mode);
-                    hasValueWritten = true;
+                else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                    Mark mark = writePermitted ? null : writer.getMark();
+                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted, mode)) {
+                        hasValueWritten = true;
+                    } else {
+                        if (mark != null) {
+                            writer.resetMark(mark);
+                        }
+                    }
+                }
+                else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                    Mark mark = writePermitted ? null : writer.getMark();
+                    if (pipeValue(reader, writer, projKeys, fullPath, writePermitted, mode)) {
+                        hasValueWritten = true;
+                    } else {
+                        if (mark != null) {
+                            writer.resetMark(mark);
+                        }
+                    }
                 }
                 else {
-                    pipeValue(reader, writer, projKeys, fullPath,true,mode);
-                    hasValueWritten = true;
-                }
-                if (isExactMatch) {
-                    projKeys.remove(fullPath);
+                    reader.skipValue();
                 }
             }
-            else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
-                Mark mark = exactMatched ? null : writer.getMark();
-                if (pipeValue(reader, writer, projKeys, fullPath, exactMatched,mode)) {
-                    hasValueWritten = true;
-                } else {
-                    if (mark != null) {
-                        writer.resetMark(mark);
-                    }
-                }
-            }
-            else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
-                Mark mark = exactMatched ? null : writer.getMark();
-                if (pipeValue(reader, writer, projKeys, fullPath, exactMatched,mode)) {
-                    hasValueWritten = true;
-                } else {
-                    if (mark != null) {
-                        writer.resetMark(mark);
-                    }
-                }
-            }
-            else {
-                reader.skipValue();
-            }
+
             idx++;
         }
         reader.readEndArray();
@@ -223,14 +229,14 @@ public class RawBsonDocumentProjector {
     }
 
     private boolean pipeValue(BsonBinaryReader reader, InternalBsonBinaryWriter writer,
-                           Set<String> projKeys, String currentPath, boolean exactMatched,ProjectionMode mode) {
+                           Set<String> projKeys, String currentPath, boolean writePermitted,ProjectionMode mode) {
 
         BsonType bsonType = reader.getCurrentBsonType();
         switch (bsonType) {
             case DOCUMENT:
-                return pipeDocument(reader, writer, projKeys, currentPath, exactMatched,mode);
+                return pipeDocument(reader, writer, projKeys, currentPath, writePermitted,mode);
             case ARRAY:
-                return pipeArray(reader, writer, projKeys, currentPath, exactMatched,mode);
+                return pipeArray(reader, writer, projKeys, currentPath, writePermitted,mode);
             case DOUBLE:
                 writer.writeDouble(reader.readDouble());
                 break;
@@ -267,7 +273,7 @@ public class RawBsonDocumentProjector {
                 break;
             case JAVASCRIPT_WITH_SCOPE:
                 writer.writeJavaScriptWithScope(reader.readJavaScriptWithScope());
-                pipeDocument(reader, writer, projKeys, currentPath, exactMatched,mode);
+                pipeDocument(reader, writer, projKeys, currentPath, writePermitted,mode);
                 break;
             case INT32:
                 writer.writeInt32(reader.readInt32());
