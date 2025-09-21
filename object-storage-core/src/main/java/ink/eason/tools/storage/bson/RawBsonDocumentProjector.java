@@ -33,16 +33,21 @@ import static java.nio.ByteOrder.LITTLE_ENDIAN;
 
 public class RawBsonDocumentProjector {
 
-    private static final String ROOT_PATH = "";
-
-    private final boolean inPlaceProjection;
-
-    public RawBsonDocumentProjector() {
-        this.inPlaceProjection = false;
+    public static enum ProjectionMode {
+        IN_PLACE,
+        NEW_BUFFER
     }
 
-    public RawBsonDocumentProjector(boolean inPlaceProjection) {
-        this.inPlaceProjection = inPlaceProjection;
+    private static final String ROOT_PATH = "";
+
+    private final ProjectionMode projectionMode;
+
+    public RawBsonDocumentProjector() {
+        this.projectionMode = ProjectionMode.NEW_BUFFER;
+    }
+
+    public RawBsonDocumentProjector(ProjectionMode inPlaceProjection) {
+        this.projectionMode = inPlaceProjection;
     }
 
     public RawBsonDocument project(RawBsonDocument input, Set<String> projection) {
@@ -58,7 +63,7 @@ public class RawBsonDocumentProjector {
 
         projection = normalizeProjection(projection);
 
-        ByteBuffer bsonOutputByteBuffer = inPlaceProjection
+        ByteBuffer bsonOutputByteBuffer = projectionMode == ProjectionMode.IN_PLACE
                 ? bsonInputByteBuffer.slice().order(LITTLE_ENDIAN)
                 : ByteBuffer.allocate(bsonInputByteBuffer.remaining()).order(LITTLE_ENDIAN);
 
@@ -486,9 +491,8 @@ public class RawBsonDocumentProjector {
             mark.reset();
         }
 
-
         public class Mark extends AbstractBsonWriter.Mark {
-            private final int position;
+            public final int position;
 
             /**
              * Creates a new instance storing the current position of the {@link BsonOutput}.
