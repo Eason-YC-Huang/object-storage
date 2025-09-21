@@ -93,6 +93,8 @@ public class RawBsonDocumentProjector {
         return bsonOutputByteBuffer;
     }
 
+    // ================ core  ================
+
     private Set<String> normalizeProjection(Set<String> projection) {
         return projection.stream().map(key -> key.replaceAll("\\[(\\d+)]", ".$1")).collect(Collectors.toCollection(HashSet::new));
     }
