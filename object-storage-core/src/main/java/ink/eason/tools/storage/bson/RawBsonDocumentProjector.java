@@ -73,6 +73,10 @@ public class RawBsonDocumentProjector {
     private final BsonDocument filter;
 
     public RawBsonDocumentProjector(Set<String> projection, ProjectionMode mode, boolean inPlaceModify, BsonDocument filter) {
+        if ((projection == null || projection.isEmpty()) && (filter == null || filter.isEmpty()) ) {
+            throw new IllegalArgumentException("projection and filter can't be empty at the same time");
+        }
+
         this.projection = projection != null ? normalizeProjection(projection) : Collections.emptySet();
         this.mode = mode;
         this.inPlaceModify = inPlaceModify;
@@ -125,6 +129,10 @@ public class RawBsonDocumentProjector {
     }
 
     public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, boolean inPlaceModify, Set<String> projection, ProjectionMode mode, BsonDocument filter) {
+
+        if ((projection == null || projection.isEmpty()) && (filter == null || filter.isEmpty()) ) {
+            throw new IllegalArgumentException("projection and filter can't be empty at the same time");
+        }
 
         projection = projection != null ? normalizeProjection(projection) : Collections.emptySet();
         Set<String> filterKeys = filter != null ? normalizeFilterKey(filter) : Collections.emptySet();
