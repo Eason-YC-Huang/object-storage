@@ -102,7 +102,7 @@ public class RawBsonDocumentProjector {
         return project(input, false, projection, ProjectionMode.INCLUSIVE, null);
     }
 
-    private static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection){
+    public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection){
         return project(bsonInputByteBuffer, false, projection, ProjectionMode.INCLUSIVE, null);
     }
 
@@ -110,7 +110,7 @@ public class RawBsonDocumentProjector {
         return project(input, false, projection, mode, null);
     }
 
-    private static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode){
+    public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode){
         return project(bsonInputByteBuffer, false, projection, mode, null);
     }
 
@@ -118,7 +118,7 @@ public class RawBsonDocumentProjector {
         return project(input, false, projection, mode, filter);
     }
 
-    private static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode, BsonDocument filter){
+    public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode, BsonDocument filter){
         return project(bsonInputByteBuffer, false, projection, mode, filter);
     }
 
