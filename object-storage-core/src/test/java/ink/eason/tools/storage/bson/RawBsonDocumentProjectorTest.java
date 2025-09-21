@@ -23,7 +23,7 @@ class RawBsonDocumentProjectorTest {
 
     // 一个包含所有BSON数据类型和复杂嵌套结构的源文档
     // 使用MongoDB Extended JSON v2格式编写
-    private static final RawBsonDocument SOURCE_DOCUMENT = RawBsonDocument.parse("""
+    private static final RawBsonDocument PROTO_DOCUMENT = RawBsonDocument.parse("""
             {
               "_id": { "$oid": "65fd79d47b59e42e191daab1" },
               "name": "Comprehensive BSON Test",
@@ -257,7 +257,12 @@ class RawBsonDocumentProjectorTest {
     @MethodSource("projectionTestCases")
     @DisplayName("Should correctly project fields based on various projections")
     void shouldProjectCorrectly(String testName, Set<String> projection, String expectedJson) {
-        RawBsonDocument result = projector.project(SOURCE_DOCUMENT, projection);
+
+        byte[] docBytes = new byte[PROTO_DOCUMENT.getByteBuffer().asNIO().remaining()];
+        PROTO_DOCUMENT.getByteBuffer().asNIO().get(docBytes);
+        RawBsonDocument document = new RawBsonDocument(docBytes);
+
+        RawBsonDocument result = projector.project(document, projection);
 
         // 解析为Document对象进行比较，忽略字段顺序
         Document expectedDoc = Document.parse(expectedJson);
@@ -270,7 +275,10 @@ class RawBsonDocumentProjectorTest {
     @DisplayName("Should throw IllegalArgumentException for null projection")
     void shouldThrowExceptionForNullProjection() {
         assertThrows(IllegalArgumentException.class, () -> {
-            projector.project(SOURCE_DOCUMENT, null);
+            byte[] docBytes = new byte[PROTO_DOCUMENT.getByteBuffer().asNIO().remaining()];
+            PROTO_DOCUMENT.getByteBuffer().asNIO().get(docBytes);
+            RawBsonDocument document = new RawBsonDocument(docBytes);
+            projector.project(document, null);
         });
     }
 
@@ -278,7 +286,10 @@ class RawBsonDocumentProjectorTest {
     @DisplayName("Should throw IllegalArgumentException for empty projection")
     void shouldThrowExceptionForEmptyProjection() {
         assertThrows(IllegalArgumentException.class, () -> {
-            projector.project(SOURCE_DOCUMENT, Collections.emptySet());
+            byte[] docBytes = new byte[PROTO_DOCUMENT.getByteBuffer().asNIO().remaining()];
+            PROTO_DOCUMENT.getByteBuffer().asNIO().get(docBytes);
+            RawBsonDocument document = new RawBsonDocument(docBytes);
+            projector.project(document, Collections.emptySet());
         });
     }
 }
