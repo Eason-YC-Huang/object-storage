@@ -45,7 +45,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -64,24 +63,24 @@ public class RawBsonDocumentProjector {
 
     private final ProjectionMode mode;
 
-    private final Set<String> projection;
+    private final Set<String> fields;
 
     private final Set<String> filterKeys;
 
     private final boolean inPlaceModify;
 
-    private final BsonDocument filter;
+    private final BsonDocument filters;
 
-    public RawBsonDocumentProjector(Set<String> projection, ProjectionMode mode, boolean inPlaceModify, BsonDocument filter) {
-        if ((projection == null || projection.isEmpty()) && (filter == null || filter.isEmpty()) ) {
-            throw new IllegalArgumentException("projection and filter can't be empty at the same time");
+    public RawBsonDocumentProjector(Set<String> fields, ProjectionMode mode, boolean inPlaceModify, BsonDocument filters) {
+        if ((fields == null || fields.isEmpty()) && (filters == null || filters.isEmpty()) ) {
+            throw new IllegalArgumentException("fields and filters can't be empty at the same time");
         }
 
-        this.projection = projection != null ? normalizeProjection(projection) : Collections.emptySet();
+        this.fields = fields != null ? normalizeProjection(fields) : Collections.emptySet();
         this.mode = mode;
         this.inPlaceModify = inPlaceModify;
-        this.filterKeys = filter != null ? normalizeFilterKey(filter) : Collections.emptySet();
-        this.filter = filter != null ? filter.clone() : null;
+        this.filterKeys = filters != null ? normalizeFilterKey(filters) : Collections.emptySet();
+        this.filters = filters != null ? filters.clone() : null;
     }
 
     // =============== public instance methods ===============
@@ -93,52 +92,52 @@ public class RawBsonDocumentProjector {
     }
 
     public ByteBuffer project(ByteBuffer bsonInputByteBuffer){
-        return project(bsonInputByteBuffer, inPlaceModify, projection, mode, filter, filterKeys, new HashMap<>());
+        return project(bsonInputByteBuffer, inPlaceModify, fields, mode, filters, filterKeys, new HashMap<>());
     }
 
     // =============== public static methods ===============
 
-    public static RawBsonDocument project(RawBsonDocument input, Set<String> projection){
-        return project(input, false, projection, ProjectionMode.INCLUSIVE, null);
+    public static RawBsonDocument project(RawBsonDocument input, Set<String> fields){
+        return project(input, false, fields, ProjectionMode.INCLUSIVE, null);
     }
 
-    public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection){
-        return project(bsonInputByteBuffer, false, projection, ProjectionMode.INCLUSIVE, null);
+    public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> fields){
+        return project(bsonInputByteBuffer, false, fields, ProjectionMode.INCLUSIVE, null);
     }
 
-    public static RawBsonDocument project(RawBsonDocument input, Set<String> projection, ProjectionMode mode){
-        return project(input, false, projection, mode, null);
+    public static RawBsonDocument project(RawBsonDocument input, Set<String> fields, ProjectionMode mode){
+        return project(input, false, fields, mode, null);
     }
 
-    public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode){
-        return project(bsonInputByteBuffer, false, projection, mode, null);
+    public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> fields, ProjectionMode mode){
+        return project(bsonInputByteBuffer, false, fields, mode, null);
     }
 
-    public static RawBsonDocument project(RawBsonDocument input, Set<String> projection, ProjectionMode mode, BsonDocument filter){
-        return project(input, false, projection, mode, filter);
+    public static RawBsonDocument project(RawBsonDocument input, Set<String> fields, ProjectionMode mode, BsonDocument filters){
+        return project(input, false, fields, mode, filters);
     }
 
-    public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> projection, ProjectionMode mode, BsonDocument filter){
-        return project(bsonInputByteBuffer, false, projection, mode, filter);
+    public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, Set<String> fields, ProjectionMode mode, BsonDocument filters){
+        return project(bsonInputByteBuffer, false, fields, mode, filters);
     }
 
-    public static RawBsonDocument project(RawBsonDocument input, boolean inPlaceModify, Set<String> projection, ProjectionMode mode, BsonDocument filter) {
-        ByteBuffer output = project(input.getByteBuffer().asNIO(), inPlaceModify, projection, mode, filter);
+    public static RawBsonDocument project(RawBsonDocument input, boolean inPlaceModify, Set<String> fields, ProjectionMode mode, BsonDocument filters) {
+        ByteBuffer output = project(input.getByteBuffer().asNIO(), inPlaceModify, fields, mode, filters);
         if (output == null) return null;
         return new RawBsonDocument(output.array(), 0, output.remaining());
     }
 
-    public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, boolean inPlaceModify, Set<String> projection, ProjectionMode mode, BsonDocument filter) {
+    public static ByteBuffer project(ByteBuffer bsonInputByteBuffer, boolean inPlaceModify, Set<String> fields, ProjectionMode mode, BsonDocument filters) {
 
-        if ((projection == null || projection.isEmpty()) && (filter == null || filter.isEmpty()) ) {
-            throw new IllegalArgumentException("projection and filter can't be empty at the same time");
+        if ((fields == null || fields.isEmpty()) && (filters == null || filters.isEmpty()) ) {
+            throw new IllegalArgumentException("fields and filters can't be empty at the same time");
         }
 
-        projection = projection != null ? normalizeProjection(projection) : Collections.emptySet();
-        Set<String> filterKeys = filter != null ? normalizeFilterKey(filter) : Collections.emptySet();
-        Map<String, BsonValue> valuesForFilter = filter != null ? new HashMap<>(filterKeys.size()) : Collections.emptyMap();
+        fields = fields != null ? normalizeProjection(fields) : Collections.emptySet();
+        Set<String> filterKeys = filters != null ? normalizeFilterKey(filters) : Collections.emptySet();
+        Map<String, BsonValue> valuesForFilter = filters != null ? new HashMap<>(filterKeys.size()) : Collections.emptyMap();
 
-        return project(bsonInputByteBuffer, inPlaceModify, projection, mode, filter, filterKeys, valuesForFilter);
+        return project(bsonInputByteBuffer, inPlaceModify, fields, mode, filters, filterKeys, valuesForFilter);
 
     }
 
