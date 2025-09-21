@@ -206,7 +206,7 @@ public class RawBsonDocumentProjector {
                         projKeys.remove(fullPath);
                     }
                 }
-                else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                else if (bsonType == BsonType.DOCUMENT && (projKeys.stream().anyMatch(key -> key.contains(fullPath + ".")) || filterKeys.stream().anyMatch(key -> key.contains(fullPath + ".")))) {
                     Mark mark = writePermitted ? null : writer.getMark();
                     writer.writeName(fieldName);
                     if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted,mode)) {
@@ -217,7 +217,7 @@ public class RawBsonDocumentProjector {
                         }
                     }
                 }
-                else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                else if (bsonType == BsonType.ARRAY && (projKeys.stream().anyMatch(key -> key.contains(fullPath + ".")) || filterKeys.stream().anyMatch(key -> key.contains(fullPath + ".")))) {
                     Mark mark = writePermitted ? null : writer.getMark();
                     writer.writeName(fieldName);
                     if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted,mode)) {
@@ -237,7 +237,7 @@ public class RawBsonDocumentProjector {
                     reader.skipValue();
                     projKeys.remove(fullPath);
                 }
-                else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                else if (bsonType == BsonType.DOCUMENT && (projKeys.stream().anyMatch(key -> key.contains(fullPath + ".")) || filterKeys.stream().anyMatch(key -> key.contains(fullPath + ".")))) {
                     Mark mark = writePermitted ? null : writer.getMark();
                     writer.writeName(fieldName);
                     if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted,mode)) {
@@ -248,7 +248,7 @@ public class RawBsonDocumentProjector {
                         }
                     }
                 }
-                else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                else if (bsonType == BsonType.ARRAY && (projKeys.stream().anyMatch(key -> key.contains(fullPath + ".")) || filterKeys.stream().anyMatch(key -> key.contains(fullPath + ".")))) {
                     Mark mark = writePermitted ? null : writer.getMark();
                     writer.writeName(fieldName);
                     if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted,mode)) {
@@ -321,7 +321,7 @@ public class RawBsonDocumentProjector {
                         projKeys.remove(fullPath);
                     }
                 }
-                else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                else if (bsonType == BsonType.DOCUMENT && (projKeys.stream().anyMatch(key -> key.contains(fullPath + ".")) || filterKeys.stream().anyMatch(key -> key.contains(fullPath + ".")))) {
                     Mark mark = writePermitted ? null : writer.getMark();
                     if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted, mode)) {
                         hasValueWritten = true;
@@ -331,7 +331,7 @@ public class RawBsonDocumentProjector {
                         }
                     }
                 }
-                else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                else if (bsonType == BsonType.ARRAY && (projKeys.stream().anyMatch(key -> key.contains(fullPath + ".")) || filterKeys.stream().anyMatch(key -> key.contains(fullPath + ".")))) {
                     Mark mark = writePermitted ? null : writer.getMark();
                     if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted, mode)) {
                         hasValueWritten = true;
@@ -350,7 +350,7 @@ public class RawBsonDocumentProjector {
                     reader.skipValue();
                     projKeys.remove(fullPath);
                 }
-                else if (bsonType == BsonType.DOCUMENT && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                else if (bsonType == BsonType.DOCUMENT && (projKeys.stream().anyMatch(key -> key.contains(fullPath + ".")) || filterKeys.stream().anyMatch(key -> key.contains(fullPath + ".")))) {
                     Mark mark = writePermitted ? null : writer.getMark();
                     if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted, mode)) {
                         hasValueWritten = true;
@@ -360,7 +360,7 @@ public class RawBsonDocumentProjector {
                         }
                     }
                 }
-                else if (bsonType == BsonType.ARRAY && projKeys.stream().anyMatch(key -> key.contains(fullPath + "."))) {
+                else if (bsonType == BsonType.ARRAY && (projKeys.stream().anyMatch(key -> key.contains(fullPath + ".")) || filterKeys.stream().anyMatch(key -> key.contains(fullPath + ".")))) {
                     Mark mark = writePermitted ? null : writer.getMark();
                     if (pipeValue(reader, writer, projKeys, filterKeys, valuesForFilter, fullPath, writePermitted, mode)) {
                         hasValueWritten = true;

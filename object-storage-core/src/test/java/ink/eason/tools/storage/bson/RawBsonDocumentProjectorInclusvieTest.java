@@ -1,8 +1,5 @@
 package ink.eason.tools.storage.bson;
 
-import ink.eason.tools.storage.bson.RawBsonDocumentProjector.ProjectionMode;
-import org.bson.BsonDocument;
-import org.bson.BsonString;
 import org.bson.Document;
 import org.bson.RawBsonDocument;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,7 +9,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -21,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
-class RawBsonDocumentProjectorTest {
+class RawBsonDocumentProjectorInclusvieTest {
 
     private RawBsonDocumentProjector projector;
 
@@ -295,17 +291,5 @@ class RawBsonDocumentProjectorTest {
             RawBsonDocument document = new RawBsonDocument(docBytes);
             projector.project(document, Collections.emptySet());
         });
-    }
-
-    @Test
-    void testFilter() {
-        byte[] docBytes = new byte[PROTO_DOCUMENT.getByteBuffer().asNIO().remaining()];
-        PROTO_DOCUMENT.getByteBuffer().asNIO().get(docBytes);
-        RawBsonDocument document = new RawBsonDocument(docBytes);
-        RawBsonDocument result = projector.project(document, Collections.emptySet(), ProjectionMode.EXCLUSIVE, new BsonDocument()
-                .append("name", new BsonString("Comprehensive BSON Test"))
-                .append("author.name", new BsonString("Eason")));
-        System.out.println(result);
-
     }
 }
