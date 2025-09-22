@@ -134,61 +134,57 @@ public class RawBsonProjectorBenchmark {
      */
     @Benchmark
     public void baseline_fullDeserialization(Blackhole bh) {
-        for (int i = 0; i < 1000; i++) {
-            ByteBuf byteBuffer = new ByteBufNIO(rawDocument.getByteBuffer().asNIO().slice().order(ByteOrder.LITTLE_ENDIAN));
-            try (BsonBinaryReader bsonReader = new BsonBinaryReader(new ByteBufferBsonInput(byteBuffer))) {
-                BsonDocument raw = new BsonDocumentCodec().decode(bsonReader, DecoderContext.builder().build());
-                BsonDocument doc = new BsonDocument();
-                doc.append("_id", raw.get("_id"));
-                doc.append("stringField", raw.get("stringField"));
-                doc.append("nestedDoc.boolField", raw.getDocument("nestedDoc").get("boolField"));
-                doc.append("arrayOfDocs.0.key", raw.getArray("arrayOfDocs").getFirst().asDocument().get("key"));
-                doc.append("deeplyNested.level1Array.0.level2Doc.level3Array", raw.getDocument("deeplyNested").getArray("level1Array").getFirst().asDocument().getDocument("level2Doc").getArray("level3Array"));
-                doc.append("timestampField", raw.get("timestampField"));
-                bh.consume(doc);
-            }
+        ByteBuf byteBuffer = new ByteBufNIO(rawDocument.getByteBuffer().asNIO().slice().order(ByteOrder.LITTLE_ENDIAN));
+        try (BsonBinaryReader bsonReader = new BsonBinaryReader(new ByteBufferBsonInput(byteBuffer))) {
+            BsonDocument raw = new BsonDocumentCodec().decode(bsonReader, DecoderContext.builder().build());
+            BsonDocument doc = new BsonDocument();
+            doc.append("_id", raw.get("_id"));
+            doc.append("stringField", raw.get("stringField"));
+            doc.append("nestedDoc.boolField", raw.getDocument("nestedDoc").get("boolField"));
+            doc.append("arrayOfDocs.0.key", raw.getArray("arrayOfDocs").getFirst().asDocument().get("key"));
+            doc.append("deeplyNested.level1Array.0.level2Doc.level3Array", raw.getDocument("deeplyNested").getArray("level1Array").getFirst().asDocument().getDocument("level2Doc").getArray("level3Array"));
+            doc.append("timestampField", raw.get("timestampField"));
+            bh.consume(doc);
         }
     }
 
     /**
      * 场景2: 仅投影 (Inclusive)，不进行过滤 (静态方法)
      */
-    //@Benchmark
-    //public void projectionOnly_static(Blackhole bh) {
-    //    ByteBuffer result = RawBsonProjector.project(
-    //            inputByteBuffer,
-    //            false,
-    //            projectionFields,
-    //            RawBsonProjector.ProjectionMode.INCLUSIVE,
-    //            null
-    //    );
-    //    bh.consume(result);
-    //}
+    @Benchmark
+    public void projectionOnly_static(Blackhole bh) {
+        ByteBuffer result = RawBsonProjector.project(
+                inputByteBuffer,
+                false,
+                projectionFields,
+                RawBsonProjector.ProjectionMode.INCLUSIVE,
+                null
+        );
+        bh.consume(result);
+    }
 
     /**
      * 场景3: 投影 (Inclusive) + 过滤 (静态方法)
      */
-    //@Benchmark
-    //public void projectionAndFilter_static(Blackhole bh) {
-    //    ByteBuffer result = RawBsonProjector.project(
-    //            inputByteBuffer,
-    //            false,
-    //            projectionFields,
-    //            RawBsonProjector.ProjectionMode.INCLUSIVE,
-    //            filter
-    //    );
-    //    bh.consume(result);
-    //}
+    @Benchmark
+    public void projectionAndFilter_static(Blackhole bh) {
+        ByteBuffer result = RawBsonProjector.project(
+                inputByteBuffer,
+                false,
+                projectionFields,
+                RawBsonProjector.ProjectionMode.INCLUSIVE,
+                filter
+        );
+        bh.consume(result);
+    }
 
     /**
      * 场景4: 投影 (Inclusive) + 过滤 (实例方法)
      */
     @Benchmark
     public void projectionAndFilter_instance(Blackhole bh) {
-        for (int i = 0; i < 1000; i++) {
-            ByteBuffer result = projectorInstance.project(inputByteBuffer.slice().order(ByteOrder.LITTLE_ENDIAN));
-            bh.consume(result);
-        }
+        ByteBuffer result = projectorInstance.project(inputByteBuffer.slice().order(ByteOrder.LITTLE_ENDIAN));
+        bh.consume(result);
     }
 
 
