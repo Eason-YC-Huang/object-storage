@@ -1,6 +1,6 @@
 package ink.eason.tools.storage.bson;
 
-import ink.eason.tools.storage.bson.RawBsonDocumentProjector.InternalBsonBinaryWriter.Mark;
+import ink.eason.tools.storage.bson.RawBsonProjector.InternalBsonBinaryWriter.Mark;
 import org.bson.AbstractBsonWriter;
 import org.bson.BsonArray;
 import org.bson.BsonBinaryReader;
@@ -52,7 +52,7 @@ import java.util.stream.Collectors;
 import static java.lang.String.format;
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
 
-public class RawBsonDocumentProjector {
+public class RawBsonProjector {
 
     public static enum ProjectionMode {
         INCLUSIVE,
@@ -71,7 +71,7 @@ public class RawBsonDocumentProjector {
 
     private final BsonDocument filters;
 
-    public RawBsonDocumentProjector(Set<String> fields, ProjectionMode mode, boolean inPlaceModify, BsonDocument filters) {
+    public RawBsonProjector(Set<String> fields, ProjectionMode mode, boolean inPlaceModify, BsonDocument filters) {
         if ((fields == null || fields.isEmpty()) && (filters == null || filters.isEmpty()) ) {
             throw new IllegalArgumentException("fields and filters can't be empty at the same time");
         }
@@ -801,6 +801,8 @@ public class RawBsonDocumentProjector {
             }
 
             switch (operator) {
+                case "$exists":
+                    return true;
                 case "$eq":
                     return compare(docValue, operatorValue) == 0;
                 case "$ne":

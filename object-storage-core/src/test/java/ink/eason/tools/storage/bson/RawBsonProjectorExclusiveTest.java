@@ -7,10 +7,10 @@ import org.junit.jupiter.api.Test;
 import java.util.HashSet;
 import java.util.Set;
 
-import static ink.eason.tools.storage.bson.RawBsonDocumentProjector.ProjectionMode.EXCLUSIVE;
+import static ink.eason.tools.storage.bson.RawBsonProjector.ProjectionMode.EXCLUSIVE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class RawBsonDocumentProjectorExclusiveTest {
+public class RawBsonProjectorExclusiveTest {
 
     @BeforeEach
     void setUp() {
@@ -108,7 +108,7 @@ public class RawBsonDocumentProjectorExclusiveTest {
 
 
         // 执行投影
-        RawBsonDocument outputDoc = RawBsonDocumentProjector.project(rawDoc, projectionExclusions, EXCLUSIVE);
+        RawBsonDocument outputDoc = RawBsonProjector.project(rawDoc, projectionExclusions, EXCLUSIVE);
 
         // 预期输出 - 修正后，被排除的字段和数组元素应该完全消失
         String expectedJson = """
@@ -167,7 +167,7 @@ public class RawBsonDocumentProjectorExclusiveTest {
         Set<String> exclusions = new HashSet<>();
         exclusions.add("b"); // 排除根级别的字段 'b'
 
-        RawBsonDocument outputDoc = RawBsonDocumentProjector.project(rawDoc, exclusions, EXCLUSIVE);
+        RawBsonDocument outputDoc = RawBsonProjector.project(rawDoc, exclusions, EXCLUSIVE);
         RawBsonDocument expectedDoc = RawBsonDocument.parse("{ \"a\": 1, \"c\": 3 }");
 
         assertEquals(expectedDoc.toJson(), outputDoc.toJson());
@@ -182,7 +182,7 @@ public class RawBsonDocumentProjectorExclusiveTest {
         exclusions.add("d"); // 排除不存在的根级别字段
         exclusions.add("b.e"); // 排除不存在的嵌套字段
 
-        RawBsonDocument outputDoc = RawBsonDocumentProjector.project(rawDoc, exclusions, EXCLUSIVE);
+        RawBsonDocument outputDoc = RawBsonProjector.project(rawDoc, exclusions, EXCLUSIVE);
         // 期望：因为排除的字段不存在，所以文档应该保持不变
         RawBsonDocument expectedDoc = RawBsonDocument.parse("{ \"a\": 1, \"b\": { \"c\": 2 } }");
 
@@ -197,7 +197,7 @@ public class RawBsonDocumentProjectorExclusiveTest {
         Set<String> exclusions = new HashSet<>();
         exclusions.add("user"); // 排除整个 'user' 文档
 
-        RawBsonDocument outputDoc = RawBsonDocumentProjector.project(rawDoc, exclusions, EXCLUSIVE);
+        RawBsonDocument outputDoc = RawBsonProjector.project(rawDoc, exclusions, EXCLUSIVE);
         RawBsonDocument expectedDoc = RawBsonDocument.parse("{ \"product\": { \"id\": 101, \"price\": 99.99 } }");
 
         assertEquals(expectedDoc.toJson(), outputDoc.toJson());
@@ -211,7 +211,7 @@ public class RawBsonDocumentProjectorExclusiveTest {
         Set<String> exclusions = new HashSet<>();
         exclusions.add("items"); // 排除整个 'items' 数组
 
-        RawBsonDocument outputDoc = RawBsonDocumentProjector.project(rawDoc, exclusions, EXCLUSIVE);
+        RawBsonDocument outputDoc = RawBsonProjector.project(rawDoc, exclusions, EXCLUSIVE);
         RawBsonDocument expectedDoc = RawBsonDocument.parse("{ \"settings\": { \"mode\": \"on\" } }");
 
         assertEquals(expectedDoc.toJson(), outputDoc.toJson());
@@ -224,7 +224,7 @@ public class RawBsonDocumentProjectorExclusiveTest {
 
         Set<String> exclusions = new HashSet<>(); // 空的排除集合
 
-        RawBsonDocument outputDoc = RawBsonDocumentProjector.project(rawDoc, exclusions, EXCLUSIVE);
+        RawBsonDocument outputDoc = RawBsonProjector.project(rawDoc, exclusions, EXCLUSIVE);
         // 期望：没有排除任何字段，文档应该保持不变
         RawBsonDocument expectedDoc = RawBsonDocument.parse("{ \"a\": 1, \"b\": 2 }");
 
@@ -241,7 +241,7 @@ public class RawBsonDocumentProjectorExclusiveTest {
         exclusions.add("arr.2"); // 排除数组第三个元素 (3)
         exclusions.add("arr.1.a"); // 排除数组第二个文档的 'a' 字段
 
-        RawBsonDocument outputDoc = RawBsonDocumentProjector.project(rawDoc, exclusions, EXCLUSIVE);
+        RawBsonDocument outputDoc = RawBsonProjector.project(rawDoc, exclusions, EXCLUSIVE);
         // 期望：arr.0 (1) 和 arr.2 (3) 被完全移除，arr.1 中的 'a' 被移除
         // 最终数组会变为 [ { "b": 2 }, { "x": 1 } ]
         RawBsonDocument expectedDoc = RawBsonDocument.parse("{ \"arr\": [ { \"b\": 2 }, { \"x\": 1 } ] }");
@@ -275,7 +275,7 @@ public class RawBsonDocumentProjectorExclusiveTest {
         exclusions.add("employees.1.details"); // 排除第二个员工的整个 details 文档
         exclusions.add("employees.0"); // 排除第一个员工整个文档
 
-        RawBsonDocument outputDoc = RawBsonDocumentProjector.project(rawDoc, exclusions, EXCLUSIVE);
+        RawBsonDocument outputDoc = RawBsonProjector.project(rawDoc, exclusions, EXCLUSIVE);
         String expectedJson = """
                 {
                   "employees": [
@@ -300,7 +300,7 @@ public class RawBsonDocumentProjectorExclusiveTest {
         exclusions.add("emptyDoc"); // 排除空文档
         exclusions.add("emptyArr"); // 排除空数组
 
-        RawBsonDocument outputDoc = RawBsonDocumentProjector.project(rawDoc, exclusions, EXCLUSIVE);
+        RawBsonDocument outputDoc = RawBsonProjector.project(rawDoc, exclusions, EXCLUSIVE);
         RawBsonDocument expectedDoc = RawBsonDocument.parse("{ \"data\": 1 }");
 
         assertEquals(expectedDoc.toJson(), outputDoc.toJson());
@@ -316,7 +316,7 @@ public class RawBsonDocumentProjectorExclusiveTest {
         exclusions.add("b");
         exclusions.add("c");
 
-        RawBsonDocument outputDoc = RawBsonDocumentProjector.project(rawDoc, exclusions, EXCLUSIVE);
+        RawBsonDocument outputDoc = RawBsonProjector.project(rawDoc, exclusions, EXCLUSIVE);
         RawBsonDocument expectedDoc = RawBsonDocument.parse("{}"); // 排除所有字段后得到空文档
 
         assertEquals(expectedDoc.toJson(), outputDoc.toJson());

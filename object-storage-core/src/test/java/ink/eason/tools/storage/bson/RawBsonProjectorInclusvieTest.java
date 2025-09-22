@@ -4,12 +4,10 @@ import org.bson.Document;
 import org.bson.RawBsonDocument;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import java.util.Collections;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -17,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
-class RawBsonDocumentProjectorInclusvieTest {
+class RawBsonProjectorInclusvieTest {
 
     private static final String rawJson = """
                 {
@@ -260,7 +258,7 @@ class RawBsonDocumentProjectorInclusvieTest {
         PROTO_DOCUMENT.getByteBuffer().asNIO().get(docBytes);
         RawBsonDocument document = new RawBsonDocument(docBytes);
 
-        RawBsonDocument result = RawBsonDocumentProjector.project(document, projection);
+        RawBsonDocument result = RawBsonProjector.project(document, projection);
 
         // 解析为Document对象进行比较，忽略字段顺序
         Document expectedDoc = Document.parse(expectedJson);
