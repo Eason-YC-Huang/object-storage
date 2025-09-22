@@ -67,9 +67,11 @@ import java.util.regex.Pattern;
 @Warmup(iterations = 5, time = 1)
 @Measurement(iterations = 5, time = 1)
 @Fork(1)
-public class RawBsonProjectorBenchmark {
+public class RawBsonProjectorBenchmark2 {
 
     // ================== 测试数据和配置 ==================
+
+    private ByteBuffer perInvocationBuffer;
 
     private RawBsonDocument rawDocument;
     private ByteBuffer inputByteBuffer;
@@ -106,24 +108,19 @@ public class RawBsonProjectorBenchmark {
                 "timestampField"
         ));
 
-        // 4. 定义一个能够匹配成功的过滤器
-        this.filter = new BsonDocument("$and", new BsonArray(Arrays.asList(
-                new BsonDocument("int64Field", new BsonDocument("$gt", new BsonInt64(1000L))),
-                new BsonDocument("nestedDoc.stringField", new BsonDocument("$regex", new BsonString("^Nested")))
-        )));
-
         // 5. 创建一个用于实例方法测试的Projector
         this.projectorInstance = new RawBsonProjector(
                 this.projectionFields,
                 RawBsonProjector.ProjectionMode.INCLUSIVE,
-                false,
+                true,
                 null
         );
     }
 
     @Setup(Level.Invocation)
     public void resetBuffer() {
-        inputByteBuffer.rewind();
+        byte[] rawDocByteArray = inputByteBuffer.array();
+        this.perInvocationBuffer = ByteBuffer.wrap(rawDocByteArray.clone()).order(ByteOrder.LITTLE_ENDIAN);
     }
 
 
@@ -134,61 +131,27 @@ public class RawBsonProjectorBenchmark {
      */
     @Benchmark
     public void baseline_fullDeserialization(Blackhole bh) {
-        for (int i = 0; i < 1000; i++) {
-            ByteBuf byteBuffer = new ByteBufNIO(rawDocument.getByteBuffer().asNIO().slice().order(ByteOrder.LITTLE_ENDIAN));
-            try (BsonBinaryReader bsonReader = new BsonBinaryReader(new ByteBufferBsonInput(byteBuffer))) {
-                BsonDocument raw = new BsonDocumentCodec().decode(bsonReader, DecoderContext.builder().build());
-                BsonDocument doc = new BsonDocument();
-                doc.append("_id", raw.get("_id"));
-                doc.append("stringField", raw.get("stringField"));
-                doc.append("nestedDoc.boolField", raw.getDocument("nestedDoc").get("boolField"));
-                doc.append("arrayOfDocs.0.key", raw.getArray("arrayOfDocs").getFirst().asDocument().get("key"));
-                doc.append("deeplyNested.level1Array.0.level2Doc.level3Array", raw.getDocument("deeplyNested").getArray("level1Array").getFirst().asDocument().getDocument("level2Doc").getArray("level3Array"));
-                doc.append("timestampField", raw.get("timestampField"));
-                bh.consume(doc);
-            }
+        ByteBuf byteBuffer = new ByteBufNIO(perInvocationBuffer);
+        try (BsonBinaryReader bsonReader = new BsonBinaryReader(new ByteBufferBsonInput(byteBuffer))) {
+            BsonDocument raw = new BsonDocumentCodec().decode(bsonReader, DecoderContext.builder().build());
+            BsonDocument doc = new BsonDocument();
+            doc.append("_id", raw.get("_id"));
+            doc.append("stringField", raw.get("stringField"));
+            doc.append("nestedDoc.boolField", raw.getDocument("nestedDoc").get("boolField"));
+            doc.append("arrayOfDocs.0.key", raw.getArray("arrayOfDocs").getFirst().asDocument().get("key"));
+            doc.append("deeplyNested.level1Array.0.level2Doc.level3Array", raw.getDocument("deeplyNested").getArray("level1Array").getFirst().asDocument().getDocument("level2Doc").getArray("level3Array"));
+            doc.append("timestampField", raw.get("timestampField"));
+            bh.consume(doc);
         }
     }
-
-    /**
-     * 场景2: 仅投影 (Inclusive)，不进行过滤 (静态方法)
-     */
-    //@Benchmark
-    //public void projectionOnly_static(Blackhole bh) {
-    //    ByteBuffer result = RawBsonProjector.project(
-    //            inputByteBuffer,
-    //            false,
-    //            projectionFields,
-    //            RawBsonProjector.ProjectionMode.INCLUSIVE,
-    //            null
-    //    );
-    //    bh.consume(result);
-    //}
-
-    /**
-     * 场景3: 投影 (Inclusive) + 过滤 (静态方法)
-     */
-    //@Benchmark
-    //public void projectionAndFilter_static(Blackhole bh) {
-    //    ByteBuffer result = RawBsonProjector.project(
-    //            inputByteBuffer,
-    //            false,
-    //            projectionFields,
-    //            RawBsonProjector.ProjectionMode.INCLUSIVE,
-    //            filter
-    //    );
-    //    bh.consume(result);
-    //}
 
     /**
      * 场景4: 投影 (Inclusive) + 过滤 (实例方法)
      */
     @Benchmark
     public void projectionAndFilter_instance(Blackhole bh) {
-        for (int i = 0; i < 1000; i++) {
-            ByteBuffer result = projectorInstance.project(inputByteBuffer.slice().order(ByteOrder.LITTLE_ENDIAN));
-            bh.consume(result);
-        }
+        ByteBuffer result = projectorInstance.project(perInvocationBuffer);
+        bh.consume(result);
     }
 
 
@@ -276,7 +239,7 @@ public class RawBsonProjectorBenchmark {
     // 主方法，用于直接运行此测试类
     public static void main(String[] args) throws RunnerException {
         Options opt = new OptionsBuilder()
-                .include(RawBsonProjectorBenchmark.class.getSimpleName())
+                .include(RawBsonProjectorBenchmark2.class.getSimpleName())
                 .addProfiler("gc")
                 .build();
         new Runner(opt).run();
